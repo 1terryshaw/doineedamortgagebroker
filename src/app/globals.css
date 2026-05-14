@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --navy-900: #102a43;
+    --navy-800: #243b53;
+    --navy-700: #334e68;
+    --navy-600: #486581;
+    --navy-500: #627d98;
+    --navy-100: #d9e2ec;
+    --navy-50: #f0f4f8;
+    --teal-500: #27ab83;
+    --teal-600: #199473;
+    --teal-700: #147d64;
+    --teal-400: #3ebd93;
+    --teal-100: #c6f7e2;
+    --teal-50: #effcf6;
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply bg-white text-navy-900 antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight text-navy-900;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-lg bg-teal-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-lg border border-navy-200 bg-white px-5 py-2.5 text-sm font-medium text-navy-800 transition-colors hover:bg-navy-50 focus:outline-none focus:ring-2 focus:ring-navy-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-outline-teal {
+    @apply inline-flex items-center justify-center rounded-lg border-2 border-teal-500 bg-transparent px-5 py-2.5 text-sm font-medium text-teal-600 transition-colors hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2;
+  }
+
+  .input-field {
+    @apply w-full rounded-lg border border-navy-200 bg-white px-4 py-2.5 text-sm text-navy-900 placeholder-navy-400 transition-colors focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20;
+  }
+
+  .card {
+    @apply rounded-xl border border-navy-100 bg-white p-6 shadow-sm transition-shadow hover:shadow-md;
+  }
+
+  .section-heading {
+    @apply text-2xl font-bold text-navy-900 sm:text-3xl;
+  }
+
+  .section-subheading {
+    @apply mt-2 text-base text-navy-500 sm:text-lg;
+  }
+
+  .nav-link {
+    @apply text-sm font-medium text-navy-200 transition-colors hover:text-white;
+  }
+
+  .nav-link-active {
+    @apply text-sm font-medium text-white;
+  }
+
+  .footer-link {
+    @apply text-sm text-navy-300 transition-colors hover:text-white;
+  }
+}
+
+@layer utilities {
+  .gradient-hero {
+    @apply bg-gradient-to-br from-navy-900 via-navy-800 to-navy-900;
+  }
+
+  .gradient-hero-overlay {
+    background-image:
+      radial-gradient(ellipse at 20% 50%, rgba(39, 171, 131, 0.15) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 20%, rgba(20, 125, 100, 0.1) 0%, transparent 50%);
+  }
+
+  .text-gradient {
+    @apply bg-gradient-to-r from-teal-400 to-teal-300 bg-clip-text text-transparent;
+  }
+}
