@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { SITE_NAME } from "@/lib/constants";
+import { COUNTRY } from "@/lib/country";
 import type { Region, Listing, Specialization } from "@/types";
 import ListingCard from "@/components/ListingCard";
 
@@ -64,7 +65,7 @@ async function getListingsBySpecAndCity(
     .in("id", listingIds)
     .eq("region_id", regionId)
     .eq("is_active", true)
-    .eq("country", "US")
+    .eq("country", COUNTRY)
     .order("is_premium", { ascending: false })
     .order("google_rating", { ascending: false, nullsFirst: false })
     .limit(60);

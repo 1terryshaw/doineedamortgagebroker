@@ -3,6 +3,7 @@ import { Metadata } from "next";
 import Link from "next/link";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { SITE_NAME, SITE_URL } from "@/lib/constants";
+import { COUNTRY } from "@/lib/country";
 import { Listing } from "@/types";
 import InquiryForm from "@/components/InquiryForm";
 import { LocalBusinessJsonLd } from "@/components/JsonLd";
@@ -29,7 +30,7 @@ async function getListing(slug: string): Promise<Listing | null> {
     )
     .eq("slug", slug)
     .eq("is_active", true)
-    .eq("country", "US")
+    .eq("country", COUNTRY)
     .single();
 
   if (error || !data) return null;

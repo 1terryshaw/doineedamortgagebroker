@@ -1,16 +1,9 @@
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { SITE_URL } from "@/lib/constants";
+import { COUNTRY, PROVINCE_WHITELIST } from "@/lib/country";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 3600;
-
-const US_STATE_CODES = [
-  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI",
-  "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI",
-  "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC",
-  "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT",
-  "VT", "VA", "WA", "WV", "WI", "WY", "DC",
-];
 
 export async function GET() {
   const supabase = await createServiceRoleClient();
@@ -24,8 +17,8 @@ export async function GET() {
       .from("mortgage_listings")
       .select("slug, updated_at")
       .eq("is_active", true)
-      .eq("country", "US"),
-    supabase.from("mortgage_regions").select("slug").in("province", US_STATE_CODES),
+      .eq("country", COUNTRY),
+    supabase.from("mortgage_regions").select("slug").in("province", PROVINCE_WHITELIST[COUNTRY]),
     supabase.from("mortgage_specializations").select("slug"),
   ]);
 

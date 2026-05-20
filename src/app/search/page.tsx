@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { ITEMS_PER_PAGE, SITE_NAME, SITE_URL, SORT_OPTIONS } from "@/lib/constants";
+import { COUNTRY, PROVINCE_WHITELIST } from "@/lib/country";
 import type { Listing, Region, Specialization, SearchParams } from "@/types";
 import ListingCard from "@/components/ListingCard";
 import { ItemListJsonLd } from "@/components/JsonLd";
@@ -37,6 +38,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
     supabase
       .from("mortgage_regions")
       .select("*")
+      .in("province", PROVINCE_WHITELIST[COUNTRY])
       .order("name", { ascending: true }),
     supabase
       .from("mortgage_specializations")
@@ -61,7 +63,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
       { count: "exact" }
     )
     .eq("is_active", true)
-    .eq("country", "US");
+    .eq("country", COUNTRY);
 
   // Apply filters
   if (city) {
