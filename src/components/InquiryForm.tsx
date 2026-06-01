@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useRef, FormEvent } from "react";
 import { MORTGAGE_TYPES, EMPLOYMENT_TYPES } from "@/lib/constants";
 
 interface InquiryFormProps {
@@ -21,6 +21,10 @@ export default function InquiryForm({ listingId, brokerName }: InquiryFormProps)
 
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
+  // Honeypot (TDL #455): hidden field bots fill; sent as `honeypot` in the body.
+  // renderedAt lets the server drop sub-2.5s bot submits.
+  const [honeypot, setHoneypot] = useState("");
+  const renderedAt = useRef(Date.now());
 
   function handleChange(
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -44,6 +48,8 @@ export default function InquiryForm({ listingId, brokerName }: InquiryFormProps)
         body: JSON.stringify({
           listing_id: listingId,
           ...formData,
+          honeypot,
+          renderedAt: renderedAt.current,
         }),
       });
 
@@ -106,6 +112,17 @@ export default function InquiryForm({ listingId, brokerName }: InquiryFormProps)
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      {/* Honeypot — off-screen, never seen by humans (TDL #455) */}
+      <input
+        type="text"
+        name="company_url"
+        value={honeypot}
+        onChange={(e) => setHoneypot(e.target.value)}
+        tabIndex={-1}
+        autoComplete="off"
+        aria-hidden="true"
+        className="hp-field"
+      />
       {status === "error" && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4">
           <p className="text-sm text-red-700">{errorMessage}</p>

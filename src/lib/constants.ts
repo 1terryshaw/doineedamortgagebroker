@@ -36,3 +36,7 @@ export const EMPLOYMENT_TYPES = [
   "Retired",
   "Other",
 ] as const;
+
+// TDL #455 Wave 3 — "hide": render the claim CTA (not the inquiry form) when a listing
+// has no deliverable email. "capture" would keep the form with honest microcopy.
+export const INQUIRY_NO_EMAIL_POLICY: "hide" | "capture" = "hide";

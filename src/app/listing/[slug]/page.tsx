@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import { Metadata } from "next";
 import Link from "next/link";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { SITE_NAME, SITE_URL } from "@/lib/constants";
+import { SITE_NAME, SITE_URL, INQUIRY_NO_EMAIL_POLICY } from "@/lib/constants";
+import { hasDeliverableEmail } from "@/lib/inquiry-guard";
 import { COUNTRY } from "@/lib/country";
 import { Listing } from "@/types";
 import InquiryForm from "@/components/InquiryForm";
@@ -121,7 +122,6 @@ export default async function ListingPage({ params }: PageProps) {
       question: `How do I contact ${listing.name}?`,
       answer: [
         listing.phone ? `by phone at ${listing.phone}` : null,
-        listing.email ? `by email at ${listing.email}` : null,
         listing.website ? `through their website` : null,
         `or by filling out the inquiry form on this page`,
       ]
@@ -356,17 +356,38 @@ export default async function ListingPage({ params }: PageProps) {
               id="inquiry-form"
               className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8"
             >
-              <h2 className="text-xl font-semibold text-[#1B2A4A] mb-4">
-                Send an Inquiry
-              </h2>
-              <p className="text-gray-600 mb-6">
-                Interested in working with {listing.name}? Fill out
-                the form below and they will get back to you shortly.
-              </p>
-              <InquiryForm
-                listingId={listing.id}
-                brokerName={listing.name}
-              />
+              {hasDeliverableEmail(listing) ||
+              INQUIRY_NO_EMAIL_POLICY === "capture" ? (
+                <>
+                  <h2 className="text-xl font-semibold text-[#1B2A4A] mb-4">
+                    Send an Inquiry
+                  </h2>
+                  <p className="text-gray-600 mb-6">
+                    Interested in working with {listing.name}? Fill out
+                    the form below and they will get back to you shortly.
+                  </p>
+                  <InquiryForm
+                    listingId={listing.id}
+                    brokerName={listing.name}
+                  />
+                </>
+              ) : (
+                <>
+                  <h2 className="text-xl font-semibold text-[#1B2A4A] mb-2">
+                    Is this your business?
+                  </h2>
+                  <p className="text-gray-600 mb-5">
+                    Claim this listing to manage your profile and receive
+                    customer inquiries directly.
+                  </p>
+                  <a
+                    href="/signup"
+                    className="inline-flex items-center rounded-lg bg-[#1B2A4A] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#152238] transition-colors"
+                  >
+                    Claim this listing &rarr;
+                  </a>
+                </>
+              )}
             </div>
           </div>
 
@@ -403,29 +424,6 @@ export default async function ListingPage({ params }: PageProps) {
                   </a>
                 )}
 
-                {listing.email && (
-                  <a
-                    href={`mailto:${listing.email}`}
-                    className="flex items-center gap-3 text-gray-700 hover:text-teal-600 transition-colors group"
-                  >
-                    <div className="w-10 h-10 rounded-lg bg-teal-50 flex items-center justify-center flex-shrink-0 group-hover:bg-teal-100 transition-colors">
-                      <svg
-                        className="w-5 h-5 text-teal-600"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                        />
-                      </svg>
-                    </div>
-                    <span className="text-sm break-all">{listing.email}</span>
-                  </a>
-                )}
 
                 {listing.website && (
                   <a

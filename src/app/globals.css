@@ -89,3 +89,13 @@
     @apply bg-gradient-to-r from-teal-400 to-teal-300 bg-clip-text text-transparent;
   }
 }
+
+/* Honeypot field (TDL #455) — off-screen, invisible to humans, fillable by bots */
+.hp-field {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+}

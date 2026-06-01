@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { sendEmail, renderTemplate } from "@/lib/email/sender";
+import {
+  shouldSilentDrop,
+  isValidEmail,
+  looksLikeBotContent,
+  effectiveForwardEmail,
+} from "@/lib/inquiry-guard";
+
+// Manual-bridge queue for inquiries to listings with no deliverable email.
+const ADMIN_EMAIL = "terry@doineedapro.com";
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,7 +22,14 @@ export async function POST(request: NextRequest) {
       phone,
       mortgage_type,
       message,
+      honeypot,
+      renderedAt,
     } = body;
+
+    // Silent drop — honeypot / sub-2.5s only. Return ok so bots learn nothing (TDL #455 W1).
+    if (shouldSilentDrop({ honeypot, renderedAt })) {
+      return NextResponse.json({ success: true });
+    }
 
     // Validate required fields
     if (!name || !email || !listing_id) {
@@ -23,19 +39,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Malformed/junk submitter email -> 400 so a human typo is correctable.
+    if (!isValidEmail(email)) {
+      return NextResponse.json(
+        { error: "Please enter a valid email address." },
+        { status: 400 }
+      );
+    }
+
     const supabase = await createServiceRoleClient();
 
-    // Insert inquiry
+    // Fetch the listing first — disposition depends on whether it has a deliverable address.
+    const { data: listing } = await supabase
+      .from("mortgage_listings")
+      .select("id, name, email, owner_email")
+      .eq("id", listing_id)
+      .single();
+
+    // ── Disposition (TDL #455): forward ONLY to a validated address, never raw listing.email ──
+    const fwdEmail = listing ? effectiveForwardEmail(listing) : null;
+    const isBot = looksLikeBotContent({ name, message, email });
+    const status = isBot ? "spam_review" : fwdEmail ? "new" : "needs_bridging";
+
+    // Always store one disposition row — mortgage_inquiries is the ledger; nothing lost.
     const { data: inquiry, error: inquiryError } = await supabase
       .from("mortgage_inquiries")
       .insert({
-        listing_id,
-        name,
-        email,
-        phone: phone || null,
-        mortgage_type: mortgage_type || null,
-        message: message || null,
-        status: "new",
+        listing_id: listing_id || null,
+        sender_name: name,
+        sender_email: email,
+        sender_phone: phone || null,
+        loan_type: mortgage_type || null,
+        message: message || "",
+        status,
       })
       .select()
       .single();
@@ -48,123 +84,89 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch the listing to get broker email
-    console.log("[INQUIRY DEBUG] Fetching listing for id:", listing_id);
-    const { data: listing, error: listingError } = await supabase
-      .from("mortgage_listings")
-      .select("id, name, email")
-      .eq("id", listing_id)
-      .single();
+    // tdl455canary / SMOKE_TEST: skip real dispatch for test traffic; the disposition row still persists.
+    const smoke = /tdl455canary/i.test(email || "") || process.env.SMOKE_TEST === "1";
 
-    if (listingError || !listing) {
-      console.error("[INQUIRY DEBUG] Error fetching listing:", listingError);
-      console.log("[INQUIRY DEBUG] Returning early — no listing found, but inquiry was saved");
-      // Inquiry was still saved, so return success
-      return NextResponse.json({ success: true, id: inquiry.id });
+    // Quarantined spam: stored, never forwarded, never notified.
+    if (status === "spam_review") {
+      return NextResponse.json({ success: true, id: inquiry.id, forwarded: false });
     }
 
-    console.log("[INQUIRY DEBUG] Listing found:", {
-      id: listing.id,
-      name: listing.name,
-      hasEmail: !!listing.email,
-    });
+    // No deliverable address: surface to the admin manual-bridge queue, do not forward.
+    if (status === "needs_bridging") {
+      if (!smoke) {
+        await sendEmail({
+          to: ADMIN_EMAIL,
+          subject: `[needs_bridging] inquiry for ${listing?.name || "unknown listing"}`,
+          html: `<p>An inquiry was received for a listing with no deliverable email (needs manual bridging).</p>
+                 <p><strong>From:</strong> ${name} (${email}${phone ? `, ${phone}` : ""})</p>
+                 <p><strong>Listing:</strong> ${listing?.name || listing_id}</p>
+                 <p><strong>Message:</strong> ${message || "(none)"}</p>`,
+          templateName: "inquiry_needs_bridging",
+          metadata: { inquiry_id: inquiry.id, listing_id },
+        }).catch(() => {});
+      }
+      return NextResponse.json({ success: true, id: inquiry.id, forwarded: false });
+    }
 
-    // Send notification email to broker
-    if (listing.email) {
-      console.log("[INQUIRY DEBUG] Fetching inquiry_notification template...");
-      const { data: notificationTemplate, error: notifTplError } = await supabase
+    // status === "new": forward to the VALIDATED address only.
+    const forwardTo = fwdEmail!;
+
+    if (!smoke) {
+      const { data: notificationTemplate } = await supabase
         .from("mortgage_email_templates")
         .select("*")
         .eq("name", "inquiry_notification")
         .eq("active", true)
         .single();
 
-      console.log("[INQUIRY DEBUG] inquiry_notification template result:", {
-        found: !!notificationTemplate,
-        error: notifTplError?.message || null,
-      });
-
       if (notificationTemplate) {
         const templateVars: Record<string, string> = {
-          broker_name: listing.name,
+          broker_name: listing!.name,
           inquirer_name: name,
           inquirer_email: email,
           inquirer_phone: phone || "Not provided",
           mortgage_type: mortgage_type || "Not specified",
           message: message || "No message provided",
         };
-
         const html = renderTemplate(notificationTemplate.html_body, templateVars);
         const subject = renderTemplate(notificationTemplate.subject, templateVars);
-
-        console.log("[INQUIRY DEBUG] Sending inquiry_notification email to broker:", listing.email);
-        const notifResult = await sendEmail({
-          to: listing.email,
+        await sendEmail({
+          to: forwardTo,
           subject,
           html,
           templateName: "inquiry_notification",
           metadata: { inquiry_id: inquiry.id, listing_id },
-        });
-        console.log("[INQUIRY DEBUG] inquiry_notification result:", notifResult);
-
-        if (!notifResult.success) {
-          console.error(
-            `[INQUIRY DEBUG] SMTP error sending inquiry_notification to ${listing.email}:`,
-            notifResult.error
-          );
-        }
-      } else {
-        console.warn("[INQUIRY DEBUG] No active inquiry_notification template found — skipping broker email");
+        }).catch(() => {});
       }
-    } else {
-      console.warn("[INQUIRY DEBUG] Listing has no email — skipping broker notification");
+
+      // Branded confirmation to the inquirer.
+      const { data: confirmationTemplate } = await supabase
+        .from("mortgage_email_templates")
+        .select("*")
+        .eq("name", "inquiry_confirmation")
+        .eq("active", true)
+        .single();
+
+      if (confirmationTemplate) {
+        const confirmVars: Record<string, string> = {
+          inquirer_name: name,
+          broker_name: listing!.name,
+          mortgage_type: mortgage_type || "Not specified",
+        };
+        const html = renderTemplate(confirmationTemplate.html_body, confirmVars);
+        const subject = renderTemplate(confirmationTemplate.subject, confirmVars);
+        await sendEmail({
+          to: email,
+          subject,
+          html,
+          templateName: "inquiry_confirmation",
+          metadata: { inquiry_id: inquiry.id, listing_id },
+        }).catch(() => {});
+      }
     }
 
-    // Send confirmation email to the inquirer
-    console.log("[INQUIRY DEBUG] Fetching inquiry_confirmation template...");
-    const { data: confirmationTemplate, error: confirmTplError } = await supabase
-      .from("mortgage_email_templates")
-      .select("*")
-      .eq("name", "inquiry_confirmation")
-      .eq("active", true)
-      .single();
-
-    console.log("[INQUIRY DEBUG] inquiry_confirmation template result:", {
-      found: !!confirmationTemplate,
-      error: confirmTplError?.message || null,
-    });
-
-    if (confirmationTemplate) {
-      const confirmVars: Record<string, string> = {
-        inquirer_name: name,
-        broker_name: listing.name,
-        mortgage_type: mortgage_type || "Not specified",
-      };
-
-      const html = renderTemplate(confirmationTemplate.html_body, confirmVars);
-      const subject = renderTemplate(confirmationTemplate.subject, confirmVars);
-
-      console.log("[INQUIRY DEBUG] Sending inquiry_confirmation email to inquirer:", email);
-      const confirmResult = await sendEmail({
-        to: email,
-        subject,
-        html,
-        templateName: "inquiry_confirmation",
-        metadata: { inquiry_id: inquiry.id, listing_id },
-      });
-      console.log("[INQUIRY DEBUG] inquiry_confirmation result:", confirmResult);
-
-      if (!confirmResult.success) {
-        console.error(
-          `[INQUIRY DEBUG] SMTP error sending inquiry_confirmation to ${email}:`,
-          confirmResult.error
-        );
-      }
-    } else {
-      console.warn("[INQUIRY DEBUG] No active inquiry_confirmation template found — skipping confirmation email");
-    }
-
-    return NextResponse.json({ success: true, id: inquiry.id });
+    return NextResponse.json({ success: true, id: inquiry.id, forwarded: true });
   } catch (error) {
     console.error("Inquiry API error:", error);
     return NextResponse.json(
