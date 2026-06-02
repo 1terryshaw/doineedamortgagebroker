@@ -41,6 +41,8 @@ export interface Jurisdiction {
   // Layout meta
   siteTitleSuffix: string;
   siteDescription: string;
+  // Email
+  emailFromName: string; // from-name on outbound mail (brand per host)
 }
 
 const JURISDICTIONS: Record<"CA" | "US", Jurisdiction> = {
@@ -96,6 +98,7 @@ const JURISDICTIONS: Record<"CA" | "US", Jurisdiction> = {
     siteTitleSuffix: "Find a US Mortgage Broker",
     siteDescription:
       "Find a licensed mortgage broker or loan originator in the United States. Compare licensed professionals sourced from official state regulator records. This is a directory, not financial advice.",
+    emailFromName: "DoINeedAMortgageBroker",
   },
   CA: {
     country: "CA",
@@ -149,6 +152,7 @@ const JURISDICTIONS: Record<"CA" | "US", Jurisdiction> = {
     siteTitleSuffix: "Find a Mortgage Broker in Canada",
     siteDescription:
       "Find a licensed mortgage broker in Canada. Compare professionals sourced from provincial regulator records (FSRA, BCFSA, and other provincial regulators). This is a directory, not financial advice.",
+    emailFromName: "FindMyMortgageBroker",
   },
 };
 

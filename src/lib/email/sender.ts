@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { JURISDICTION } from "@/lib/jurisdiction";
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -47,7 +48,7 @@ export async function sendEmail({
   try {
     console.log("[EMAIL DEBUG] Attempting transporter.sendMail...");
     const info = await transporter.sendMail({
-      from: `"DoINeedAMortgageBroker" <${process.env.GMAIL_USER}>`,
+      from: `"${JURISDICTION.emailFromName}" <${process.env.GMAIL_USER}>`,
       to,
       subject,
       ...(headers ? { headers } : {}),
