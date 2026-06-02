@@ -39,6 +39,35 @@ Repoint `findmymortgagebroker.ca`'s Vercel project Git source to the **survivor*
 (env-gated, same paths). Rollback = revert the Vercel Git-source binding; `.ca` DNS untouched.
 Per-page hreflang reciprocity completes automatically once both hosts run this repo.
 
+## Phase 2 — cutover (2026-06-02): code prep DONE; infra rebind BLOCKED on access
+- MUST-FIX **already satisfied**: survivor has `/api/unsubscribe` (unified-suppression version
+  via TDL#472 — `mortgage_listings` + `public.email_suppressions`). File-set diff confirms
+  survivor ⊇ old `.ca` repo — **no routes to port**.
+- Shipped country-conditional **email from-name** (`JURISDICTION.emailFromName`: US=
+  `DoINeedAMortgageBroker` unchanged; CA=`FindMyMortgageBroker`) so post-cutover `.ca` won't
+  send US-branded mail (commit `0a7e7e7`). NOTE: email is **Gmail SMTP** (shared empire account,
+  `GMAIL_USER`), NOT per-domain Resend — so there is no per-domain Resend sender to configure;
+  the from-name is the brand control.
+- **BLOCKER:** `findmymortgagebroker.ca`'s Vercel project is **NOT under this account's scope**
+  (1terryshaw-3369 / terence-shaws-projects — 20 projects, none is find*/mortgage-CA; `.ca` not
+  in domains list). The **Git-source rebind, env-import, and repo-archive must be done by
+  whoever owns that Vercel team** (likely a separate Vercel account/team). Steps below.
+
+### Phase-2 cutover steps for the .ca Vercel-project owner (NOT executable from here)
+1. ENV PARITY on the `.ca` project (it already runs a sibling, so most exist): confirm
+   `NEXT_PUBLIC_COUNTRY=CA`, `NEXT_PUBLIC_SITE_URL=https://findmymortgagebroker.ca`,
+   Supabase (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+   `SUPABASE_SERVICE_ROLE_KEY`), `GMAIL_USER` + `GMAIL_APP_PASSWORD`, `ANTHROPIC_API_KEY`,
+   `GOOGLE_PLACES_API_KEY`, `ADMIN_EMAIL`. (Email = Gmail SMTP, shared — no Resend var needed.)
+2. Repoint the `.ca` project's **Git source** → `1terryshaw/doineedamortgagebroker` (production
+   branch `master`). Trigger a deploy.
+3. Archive (don't delete) the `1terryshaw/findyourmortgagebroker` repo.
+4. Keep `findmymortgagebroker.ca` registered/renewed; DNS untouched. Rollback = revert the
+   Git-source binding.
+5. VERIFY: `.ca` serves CA mode (provincial copy, NMLS=0, Ontario/PIPEDA, canonical→.ca,
+   reciprocal hreflang), `/api/unsubscribe` responds, and URL-parity (no previously-live CA URL
+   404s; `/[citySlug]`, `/[citySlug]/[professionSlug]`, `/listing/[slug]`, `/search` all stable).
+
 ## Open / later
 - US content gap (FL-only) — seed more US states (FL OFR + other state boards).
 - Unused `SITE_DESCRIPTION` in constants.ts still US-worded (dead constant; conditionalize if revived).
