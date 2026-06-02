@@ -1,4 +1,7 @@
-export const SITE_NAME = "DoINeedAMortgageBroker";
+import { JURISDICTION } from "./jurisdiction";
+
+// Visible brand is country-keyed: .com = DoINeedAMortgageBroker, .ca = FindMyMortgageBroker.
+export const SITE_NAME = JURISDICTION.brandName;
 export const SITE_DESCRIPTION =
   "Find a licensed mortgage broker in the United States. Compare licensed loan originators and broker firms across all 50 states. This is a directory, not financial advice.";
 export const SITE_URL =

@@ -9,6 +9,7 @@ import { COUNTRY } from "./country";
 export interface Jurisdiction {
   country: "CA" | "US";
   countryName: string; // "the United States" / "Canada"
+  brandName: string; // visible brand: title, H1/logo, og:site_name, footer/header
   directoryScope: string; // for meta: "a US directory" / "a Canadian directory"
   // Legal/About page copy
   regulatorRecords: string; // "official state regulator records" / "provincial regulator records"
@@ -49,6 +50,7 @@ const JURISDICTIONS: Record<"CA" | "US", Jurisdiction> = {
   US: {
     country: "US",
     countryName: "the United States",
+    brandName: "DoINeedAMortgageBroker",
     directoryScope: "a US directory",
     regulatorRecords: "official state regulator records",
     regulatorRecordsParen:
@@ -103,6 +105,7 @@ const JURISDICTIONS: Record<"CA" | "US", Jurisdiction> = {
   CA: {
     country: "CA",
     countryName: "Canada",
+    brandName: "FindMyMortgageBroker",
     directoryScope: "a Canadian directory",
     regulatorRecords: "provincial regulator records",
     regulatorRecordsParen:

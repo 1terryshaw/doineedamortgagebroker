@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { SITE_NAME } from "@/lib/constants";
 import AdminClient from "@/components/AdminClient";
 
 export const metadata = {
-  title: "Admin Dashboard | DoINeedAMortgageBroker",
+  title: `Admin Dashboard | ${SITE_NAME}`,
   robots: { index: false, follow: false },
 };
 

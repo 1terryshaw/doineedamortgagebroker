@@ -1,9 +1,12 @@
 // src/lib/claim-pitch.ts — TDL #472 lead-to-claim (mortgagebroker bespoke port).
 // CTA destination is /signup (this directory claims via signup, not /claim/{slug}).
 
+import { JURISDICTION } from "@/lib/jurisdiction";
+
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://doineedamortgagebroker.com").replace(/\/$/, "");
 const DISPLAY_DOMAIN = SITE_URL.replace(/^https?:\/\//, "").replace(/^www\./, "");
-const DIRECTORY_NAME = "DoINeedAMortgageBroker.com";
+// Brand + TLD, country-keyed: DoINeedAMortgageBroker.com / FindMyMortgageBroker.ca
+const DIRECTORY_NAME = `${JURISDICTION.brandName}.${DISPLAY_DOMAIN.split(".").pop()}`;
 const CASL_SENDER = "Smart Website Management";
 const PITCH_INTERVAL_MS = 14 * 24 * 60 * 60 * 1000; // <= 1 pitch / 14 days / recipient
 
