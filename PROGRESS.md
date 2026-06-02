@@ -39,7 +39,16 @@ Repoint `findmymortgagebroker.ca`'s Vercel project Git source to the **survivor*
 (env-gated, same paths). Rollback = revert the Vercel Git-source binding; `.ca` DNS untouched.
 Per-page hreflang reciprocity completes automatically once both hosts run this repo.
 
-## Phase 2 — cutover (2026-06-02): code prep DONE; infra rebind BLOCKED on access
+## Phase 2 — cutover COMPLETE + verified (2026-06-02)
+findmymortgagebroker.ca's Vercel Git source was rebound to this repo (by the project owner);
+deploy triggered via empty commit `f71de95`. VERIFIED live: .ca (200) serves this codebase in
+CA mode (Browse-by-Province, provincial regulator, NMLS/US/FL leaks = 0, canonical →
+findmymortgagebroker.ca, reciprocal hreflang); `/api/unsubscribe` works on .ca + .com; URL-parity
+holds (/toronto, /ottawa, /search, /search?province=ON all 200, no 404s); live .com US unchanged.
+Rollback = revert the .ca Git-source binding. (Earlier blocker — .ca project not under this
+account's Vercel scope — was resolved by the owner doing the rebind.)
+
+### (historical) the pre-cutover prep this phase shipped
 - MUST-FIX **already satisfied**: survivor has `/api/unsubscribe` (unified-suppression version
   via TDL#472 — `mortgage_listings` + `public.email_suppressions`). File-set diff confirms
   survivor ⊇ old `.ca` repo — **no routes to port**.
