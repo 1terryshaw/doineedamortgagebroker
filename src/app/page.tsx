@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { SITE_NAME, SITE_URL } from "@/lib/constants";
+import { JURISDICTION } from "@/lib/jurisdiction";
 import type { Region, Specialization } from "@/types";
 import { WebSiteJsonLd, OrganizationJsonLd } from "@/components/JsonLd";
 
@@ -33,12 +34,12 @@ export default async function HomePage() {
       <WebSiteJsonLd
         name={SITE_NAME}
         url={SITE_URL}
-        description="Find a licensed mortgage broker in the United States"
+        description={JURISDICTION.homeWebsiteDesc}
       />
       <OrganizationJsonLd
         name={SITE_NAME}
         url={SITE_URL}
-        description="A US directory of licensed mortgage brokers and loan originators sourced from official state regulator records"
+        description={JURISDICTION.homeOrgDesc}
       />
 
       <section className="gradient-hero relative overflow-hidden">
@@ -60,16 +61,13 @@ export default async function HomePage() {
               <br className="hidden sm:inline" /> for Your Situation
             </h1>
             <p className="mx-auto mt-4 max-w-2xl text-base text-navy-300 sm:mt-6 sm:text-lg md:text-xl">
-              Compare licensed loan originators and mortgage broker firms across
-              the United States. Listings are sourced from official state
-              regulator records.
+              {JURISDICTION.heroSubcopy}
             </p>
 
             <SearchBar cities={cities} />
 
             <p className="mt-4 text-sm text-navy-400">
-              Sourced from state regulator public records &middot; Not financial
-              advice
+              {JURISDICTION.heroSourcedLine} &middot; Not financial advice
             </p>
           </div>
         </div>
@@ -246,7 +244,7 @@ function SearchBar({ cities }: { cities: Region[] }) {
         <input
           type="text"
           name="q"
-          placeholder="Search by name, NMLS ID, or keyword..."
+          placeholder={JURISDICTION.searchPlaceholder}
           className="w-full rounded-lg border-0 bg-white py-3 pl-10 pr-4 text-sm text-navy-900 shadow-sm placeholder:text-navy-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
         />
       </div>

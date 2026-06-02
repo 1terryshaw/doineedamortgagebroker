@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SITE_NAME } from "@/lib/constants";
+import { JURISDICTION } from "@/lib/jurisdiction";
 
 export const metadata: Metadata = {
   title: `About | ${SITE_NAME}`,
-  description: `${SITE_NAME} is a US directory of licensed mortgage brokers and loan originators sourced from official state regulator records.`,
+  description: `${SITE_NAME} is ${JURISDICTION.directoryScope} of licensed mortgage brokers and loan originators sourced from ${JURISDICTION.regulatorRecords}.`,
 };
 
 export default function AboutPage() {
@@ -14,9 +15,9 @@ export default function AboutPage() {
       <div className="prose prose-navy mt-6 max-w-none text-navy-700">
         <p>
           {SITE_NAME} is a directory of licensed mortgage brokers, loan
-          originators, and mortgage broker firms in the United States. We
-          source listings from official state regulator records (NMLS-linked
-          state agencies that publish their licensee rosters publicly).
+          originators, and mortgage broker firms in {JURISDICTION.countryName}. We
+          source listings from {JURISDICTION.regulatorRecords}
+          {JURISDICTION.regulatorRecordsParen}.
         </p>
         <h2 className="mt-8 text-xl font-semibold text-navy-900">
           What we are
@@ -28,7 +29,7 @@ export default function AboutPage() {
             own listing.
           </li>
           <li>
-            Built on publicly available state regulator data, refreshed on
+            Built on publicly available {JURISDICTION.country === "US" ? "state" : "provincial"} regulator data, refreshed on
             the cadence the source agencies publish.
           </li>
         </ul>
@@ -42,7 +43,7 @@ export default function AboutPage() {
           </li>
           <li>Not a lender. We do not originate or fund mortgage loans.</li>
           <li>
-            Not affiliated with NMLS, CSBS, or any state regulator. We
+            Not affiliated with {JURISDICTION.notAffiliated}. We
             consume their public data.
           </li>
         </ul>
@@ -52,15 +53,14 @@ export default function AboutPage() {
         <p>
           Always verify a broker&apos;s current license status on{" "}
           <a
-            href="https://www.nmlsconsumeraccess.org/"
+            href={JURISDICTION.verifyRegistry.url}
             className="text-teal-600 underline"
             rel="noopener noreferrer"
             target="_blank"
           >
-            NMLS Consumer Access
+            {JURISDICTION.verifyRegistry.name}
           </a>{" "}
-          before engaging. License status changes — our snapshot reflects the
-          most recent state regulator publication and may be out of date.
+          {JURISDICTION.verifyTrailer}
         </p>
         <p className="mt-8">
           <Link href="/contact" className="text-teal-600 underline">

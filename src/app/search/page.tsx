@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { ITEMS_PER_PAGE, SITE_NAME, SITE_URL, SORT_OPTIONS } from "@/lib/constants";
 import { COUNTRY, PROVINCE_WHITELIST } from "@/lib/country";
+import { JURISDICTION } from "@/lib/jurisdiction";
 import type { Listing, Region, Specialization, SearchParams } from "@/types";
 import ListingCard from "@/components/ListingCard";
 import { ItemListJsonLd } from "@/components/JsonLd";
@@ -9,8 +10,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: `Find a Mortgage Broker | ${SITE_NAME}`,
-  description:
-    "Search and compare licensed mortgage brokers and loan originators in the United States. Filter by city, specialization, and rating to find the right broker for your needs.",
+  description: JURISDICTION.searchPageDescription,
 };
 
 interface PageProps {

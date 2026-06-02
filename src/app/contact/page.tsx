@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { SITE_NAME } from "@/lib/constants";
+import { JURISDICTION } from "@/lib/jurisdiction";
 
 export const metadata: Metadata = {
   title: `Contact | ${SITE_NAME}`,
@@ -33,8 +34,7 @@ export default function ContactPage() {
         </h2>
         <p>
           If you are listed and want your record removed, email the address
-          above with the listing URL and a copy of your government-issued ID
-          or current NMLS dashboard screenshot showing your NMLS ID. We will
+          above with the listing URL and a copy of your {JURISDICTION.removalIdProof}. We will
           process the request within 5 business days.
         </p>
       </div>

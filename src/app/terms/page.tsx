@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { SITE_NAME } from "@/lib/constants";
+import { JURISDICTION } from "@/lib/jurisdiction";
 
 export const metadata: Metadata = {
   title: `Terms of Service | ${SITE_NAME}`,
-  description: `Terms of Service for ${SITE_NAME} — a US mortgage broker directory.`,
+  description: `Terms of Service for ${SITE_NAME} — ${JURISDICTION.directoryScope} mortgage broker directory.`,
 };
 
 export default function TermsPage() {
@@ -22,16 +23,16 @@ export default function TermsPage() {
 
         <h2 className="mt-6 text-xl font-semibold text-navy-900">2. Data accuracy</h2>
         <p>
-          Listings are sourced from public state regulator records. License
+          Listings are sourced from public {JURISDICTION.country === "US" ? "state" : "provincial"} regulator records. License
           status, contact information, and licensure details can change without
           notice. Always independently verify a broker&apos;s license on{" "}
           <a
-            href="https://www.nmlsconsumeraccess.org/"
+            href={JURISDICTION.verifyRegistry.url}
             className="text-teal-600 underline"
             rel="noopener noreferrer"
             target="_blank"
           >
-            NMLS Consumer Access
+            {JURISDICTION.verifyRegistry.name}
           </a>
           .
         </p>
@@ -59,8 +60,7 @@ export default function TermsPage() {
 
         <h2 className="mt-6 text-xl font-semibold text-navy-900">6. Governing law</h2>
         <p>
-          These terms are governed by the laws of the United States and the
-          State of Florida, without regard to conflict-of-laws principles.
+          These terms are governed by the laws of {JURISDICTION.governingLaw}, without regard to conflict-of-laws principles.
         </p>
 
         <h2 className="mt-6 text-xl font-semibold text-navy-900">7. Changes</h2>

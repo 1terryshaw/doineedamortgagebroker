@@ -1,3 +1,5 @@
+import { JURISDICTION } from "@/lib/jurisdiction";
+
 export default function Disclaimer() {
   return (
     <div
@@ -7,9 +9,8 @@ export default function Disclaimer() {
     >
       <span className="font-semibold">This is not financial advice.</span>{" "}
       DoINeedAMortgageBroker is a directory, not a licensed financial advisor.
-      Mortgage decisions should be made with a licensed professional. Listings
-      are sourced from public state regulator records and may not reflect
-      current license status.
+      Mortgage decisions should be made with a licensed professional. Listings{" "}
+      {JURISDICTION.disclaimerSourceLine}
     </div>
   );
 }

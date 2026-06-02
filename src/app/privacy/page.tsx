@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { SITE_NAME } from "@/lib/constants";
+import { JURISDICTION } from "@/lib/jurisdiction";
 
 export const metadata: Metadata = {
   title: `Privacy Policy | ${SITE_NAME}`,
-  description: `Privacy Policy for ${SITE_NAME} — including CCPA disclosures.`,
+  description: `Privacy Policy for ${SITE_NAME} — including ${JURISDICTION.country === "US" ? "CCPA" : "PIPEDA"} disclosures.`,
 };
 
 export default function PrivacyPage() {
@@ -15,9 +16,9 @@ export default function PrivacyPage() {
         <h2 className="text-xl font-semibold text-navy-900">What we collect</h2>
         <ul className="mt-3 list-disc pl-6">
           <li>
-            <strong>Directory data:</strong> Names, NMLS IDs, business
+            <strong>Directory data:</strong> Names, {JURISDICTION.country === "US" ? "NMLS IDs, " : ""}business
             addresses, license numbers, phone numbers, and license status for
-            mortgage brokers. Sourced from public state regulator records.
+            mortgage brokers. Sourced from public {JURISDICTION.country === "US" ? "state" : "provincial"} regulator records.
           </li>
           <li>
             <strong>Account data:</strong> If you claim a listing, we collect
@@ -42,26 +43,22 @@ export default function PrivacyPage() {
         </p>
 
         <h2 className="mt-6 text-xl font-semibold text-navy-900">
-          California Privacy Rights (CCPA / CPRA)
+          {JURISDICTION.privacyLawHeading}
         </h2>
         <p>
-          California residents have the right to: (a) know what personal
-          information we collect, (b) request deletion of personal
-          information, (c) opt out of any &ldquo;sale&rdquo; or
-          &ldquo;sharing&rdquo; of personal information, and (d) be free from
-          discrimination for exercising these rights.
+          {JURISDICTION.privacyLawIntro}
         </p>
         <p>
-          We do not sell personal information. To exercise any CCPA right,
-          email{" "}
+          {JURISDICTION.privacyLawRights}{" "}
           <a
             href="mailto:privacy@doineedamortgagebroker.com"
             className="text-teal-600 underline"
           >
             privacy@doineedamortgagebroker.com
           </a>{" "}
-          with the subject line &ldquo;CCPA Request&rdquo; and we will respond
-          within 45 days.
+          {JURISDICTION.country === "US"
+            ? "with the subject line “CCPA Request” and we will respond within 45 days."
+            : "with the subject line “Privacy Request” and we will respond within 30 days."}
         </p>
 
         <h2 className="mt-6 text-xl font-semibold text-navy-900">

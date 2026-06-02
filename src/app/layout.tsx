@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
 import { SITE_NAME, SITE_URL } from "@/lib/constants";
+import { JURISDICTION, HREFLANG_ALTERNATES } from "@/lib/jurisdiction";
 import Disclaimer from "@/components/Disclaimer";
 
-const TITLE = "DoINeedAMortgageBroker | Find a US Mortgage Broker";
-const DESCRIPTION =
-  "Find a licensed mortgage broker or loan originator in the United States. Compare licensed professionals sourced from official state regulator records. This is a directory, not financial advice.";
+const TITLE = `${SITE_NAME} | ${JURISDICTION.siteTitleSuffix}`;
+const DESCRIPTION = JURISDICTION.siteDescription;
 
 export const metadata: Metadata = {
   title: {
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     title: TITLE,
     description: DESCRIPTION,
     siteName: SITE_NAME,
-    locale: "en_US",
+    locale: JURISDICTION.ogLocale,
     type: "website",
     url: SITE_URL,
   },
@@ -36,6 +36,9 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: SITE_URL,
+    // Additive cross-host hreflang (canonical host unchanged). Per-page
+    // reciprocity completes once findmymortgagebroker.ca repoints here (Phase 2).
+    languages: HREFLANG_ALTERNATES,
   },
 };
 
@@ -156,9 +159,7 @@ function Footer() {
               <span className="text-lg font-bold text-white">{SITE_NAME}</span>
             </Link>
             <p className="mt-3 text-sm text-navy-400">
-              A US directory of licensed mortgage brokers and loan originators.
-              Compare professionals sourced from official state regulator
-              records.
+              {JURISDICTION.footerTagline}
             </p>
           </div>
 
@@ -187,34 +188,16 @@ function Footer() {
 
           <div>
             <h3 className="text-sm font-semibold uppercase tracking-wider text-navy-200">
-              Popular Cities
+              {JURISDICTION.browseHeading}
             </h3>
             <ul className="mt-4 space-y-2">
-              <li>
-                <Link href="/miami" className="footer-link">
-                  Miami, FL
-                </Link>
-              </li>
-              <li>
-                <Link href="/orlando" className="footer-link">
-                  Orlando, FL
-                </Link>
-              </li>
-              <li>
-                <Link href="/tampa" className="footer-link">
-                  Tampa, FL
-                </Link>
-              </li>
-              <li>
-                <Link href="/jacksonville" className="footer-link">
-                  Jacksonville, FL
-                </Link>
-              </li>
-              <li>
-                <Link href="/fort-lauderdale" className="footer-link">
-                  Fort Lauderdale, FL
-                </Link>
-              </li>
+              {JURISDICTION.popularPlaces.map((place) => (
+                <li key={place.href}>
+                  <Link href={place.href} className="footer-link">
+                    {place.label}
+                  </Link>
+                </li>
+              ))}
             </ul>
           </div>
 
@@ -252,9 +235,7 @@ function Footer() {
             &copy; {new Date().getFullYear()} {SITE_NAME}. All rights reserved.
           </p>
           <p className="mt-2 max-w-3xl mx-auto">
-            Listings reflect publicly available state regulator data. Inclusion
-            does not imply endorsement. Always verify a broker&apos;s license
-            status on the NMLS Consumer Access portal before engaging.
+            {JURISDICTION.footerVerifyLine}
           </p>
         </div>
       </div>

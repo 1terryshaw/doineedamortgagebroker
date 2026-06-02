@@ -23,3 +23,18 @@ export const PROVINCE_WHITELIST: Record<"CA" | "US", string[]> = {
     "WV", "WI", "WY",
   ],
 };
+
+/**
+ * Derive country from a province/state code. Additive helper for country-aware
+ * labels/queries. Note: the code "CA" is California (US) — the Canadian whitelist
+ * uses province codes (ON, BC, …), so "CA" resolves to US, not Canada.
+ */
+export function countryForProvince(
+  province: string | null | undefined,
+): "CA" | "US" | null {
+  if (!province) return null;
+  const p = province.toUpperCase();
+  if (PROVINCE_WHITELIST.CA.includes(p)) return "CA";
+  if (PROVINCE_WHITELIST.US.includes(p)) return "US";
+  return null;
+}
