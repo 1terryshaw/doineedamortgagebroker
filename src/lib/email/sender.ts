@@ -16,6 +16,7 @@ interface SendEmailParams {
   text?: string;
   templateName?: string;
   metadata?: Record<string, unknown>;
+  headers?: Record<string, string>; // TDL #472: List-Unsubscribe etc. for CASL pitches
 }
 
 export async function sendEmail({
@@ -25,6 +26,7 @@ export async function sendEmail({
   text,
   templateName,
   metadata,
+  headers,
 }: SendEmailParams) {
   console.log("[EMAIL DEBUG] sendEmail called", {
     to,
@@ -48,6 +50,7 @@ export async function sendEmail({
       from: `"DoINeedAMortgageBroker" <${process.env.GMAIL_USER}>`,
       to,
       subject,
+      ...(headers ? { headers } : {}),
       html,
       text: text || undefined,
     });

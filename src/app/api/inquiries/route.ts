@@ -7,6 +7,8 @@ import {
   looksLikeBotContent,
   effectiveForwardEmail,
 } from "@/lib/inquiry-guard";
+import { shouldPitch, buildClaimPitchEmail } from "@/lib/claim-pitch";
+import { isSuppressed } from "@/lib/suppression";
 
 // Manual-bridge queue for inquiries to listings with no deliverable email.
 const ADMIN_EMAIL = "terry@doineedapro.com";
@@ -52,7 +54,9 @@ export async function POST(request: NextRequest) {
     // Fetch the listing first — disposition depends on whether it has a deliverable address.
     const { data: listing } = await supabase
       .from("mortgage_listings")
-      .select("id, name, email, owner_email")
+      .select(
+        "id, name, email, owner_email, claimed, tier, subscription_tier, last_claim_pitch_at"
+      )
       .eq("id", listing_id)
       .single();
 
@@ -111,8 +115,42 @@ export async function POST(request: NextRequest) {
 
     // status === "new": forward to the VALIDATED address only.
     const forwardTo = fwdEmail!;
+    const caslReady = !!(process.env.CASL_POSTAL_ADDRESS || "").trim();
+    let pitched = false;
 
     if (!smoke) {
+      // TDL #472 Lead-to-Claim: pitch an unclaimed + non-paying + not-recently-pitched +
+      // not-suppressed listing with a CASL claim-pitch email (CTA -> /signup); else the
+      // normal template notification. (US rows lack email, so this rarely fires.)
+      if (shouldPitch(listing!) && caslReady && !(await isSuppressed(forwardTo))) {
+        const pitch = buildClaimPitchEmail({
+          to: forwardTo,
+          businessName: listing!.name,
+          inquirerName: name,
+          inquirerEmail: email,
+          inquirerPhone: phone,
+          mortgageType: mortgage_type,
+          message,
+          leadId: inquiry.id,
+        });
+        if (pitch) {
+          await sendEmail({
+            to: forwardTo,
+            subject: pitch.subject,
+            html: pitch.html,
+            text: pitch.text,
+            headers: pitch.headers,
+            templateName: "claim_pitch_forward",
+            metadata: { inquiry_id: inquiry.id, listing_id },
+          }).catch(() => {});
+          pitched = true;
+          await supabase
+            .from("mortgage_listings")
+            .update({ last_claim_pitch_at: new Date().toISOString() })
+            .eq("id", listing!.id);
+        }
+      }
+
       const { data: notificationTemplate } = await supabase
         .from("mortgage_email_templates")
         .select("*")
@@ -120,7 +158,7 @@ export async function POST(request: NextRequest) {
         .eq("active", true)
         .single();
 
-      if (notificationTemplate) {
+      if (!pitched && notificationTemplate) {
         const templateVars: Record<string, string> = {
           broker_name: listing!.name,
           inquirer_name: name,
@@ -166,7 +204,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ success: true, id: inquiry.id, forwarded: true });
+    return NextResponse.json({ success: true, id: inquiry.id, forwarded: true, pitched });
   } catch (error) {
     console.error("Inquiry API error:", error);
     return NextResponse.json(
