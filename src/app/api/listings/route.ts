@@ -21,7 +21,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { listing_id, name, description, phone, email, website } =
+    const { listing_id, name, bio, phone, email, website } =
       body;
 
     if (!listing_id) {
@@ -59,7 +59,7 @@ export async function PATCH(request: NextRequest) {
       .from("mortgage_listings")
       .update({
         name,
-        description,
+        bio,
         phone,
         email,
         website,

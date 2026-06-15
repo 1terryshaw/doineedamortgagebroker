@@ -54,7 +54,7 @@ export async function generateMetadata({
     ? ` Rated ${listing.google_rating.toFixed(1)}/5.`
     : "";
   const description =
-    listing.description?.slice(0, 160) ||
+    listing.bio?.slice(0, 160) ||
     `${listing.name} is a mortgage broker in ${cityName}.${ratingText} View ratings, specializations, and contact information.`;
 
   const stateLabel = listing.state_province || listing.province || "US";
@@ -146,7 +146,7 @@ export default async function ListingPage({ params }: PageProps) {
     <main className="min-h-screen bg-gray-50">
       <LocalBusinessJsonLd
         name={listing.name}
-        description={listing.description || undefined}
+        description={listing.bio || undefined}
         url={listingUrl}
         phone={listing.phone || undefined}
         address={listing.address || undefined}
@@ -298,13 +298,13 @@ export default async function ListingPage({ params }: PageProps) {
             </div>
 
             {/* Description */}
-            {listing.description && (
+            {listing.bio && (
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
                 <h2 className="text-xl font-semibold text-[#1B2A4A] mb-4">
                   About {listing.name}
                 </h2>
                 <div className="text-gray-700 leading-relaxed whitespace-pre-line">
-                  {listing.description}
+                  {listing.bio}
                 </div>
               </div>
             )}

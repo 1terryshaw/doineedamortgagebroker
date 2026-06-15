@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 interface Listing {
   id: string;
   name: string;
-  description: string | null;
+  bio: string | null;
   phone: string | null;
   email: string | null;
   website: string | null;
@@ -151,7 +151,7 @@ export default function DashboardClient({
         body: JSON.stringify({
           listing_id: editingListing.id,
           name: editingListing.name,
-          description: editingListing.description,
+          bio: editingListing.bio,
           phone: editingListing.phone,
           email: editingListing.email,
           website: editingListing.website,
@@ -357,11 +357,11 @@ export default function DashboardClient({
                         </label>
                         <textarea
                           rows={3}
-                          value={editingListing.description ?? ""}
+                          value={editingListing.bio ?? ""}
                           onChange={(e) =>
                             setEditingListing({
                               ...editingListing,
-                              description: e.target.value,
+                              bio: e.target.value,
                             })
                           }
                           className="w-full px-4 py-3 rounded-lg border border-navy-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 outline-none transition text-navy-900 resize-none"
@@ -444,9 +444,9 @@ export default function DashboardClient({
                         <h3 className="text-lg font-bold text-navy-900">
                           {listing.name}
                         </h3>
-                        {listing.description && (
+                        {listing.bio && (
                           <p className="mt-1 text-navy-600 text-sm line-clamp-2">
-                            {listing.description}
+                            {listing.bio}
                           </p>
                         )}
                         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-navy-500">

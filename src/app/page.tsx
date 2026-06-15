@@ -2,16 +2,9 @@ import Link from "next/link";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { SITE_NAME, SITE_URL } from "@/lib/constants";
 import { JURISDICTION } from "@/lib/jurisdiction";
+import { COUNTRY, PROVINCE_WHITELIST } from "@/lib/country";
 import type { Region, Specialization } from "@/types";
 import { WebSiteJsonLd, OrganizationJsonLd } from "@/components/JsonLd";
-
-const US_STATE_CODES = [
-  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI",
-  "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI",
-  "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC",
-  "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT",
-  "VT", "VA", "WA", "WV", "WI", "WY", "DC",
-];
 
 export default async function HomePage() {
   const supabase = await createServerSupabaseClient();
@@ -20,7 +13,7 @@ export default async function HomePage() {
     supabase
       .from("mortgage_regions")
       .select("*")
-      .in("province", US_STATE_CODES)
+      .in("province", PROVINCE_WHITELIST[COUNTRY])
       .order("name")
       .limit(12),
     supabase.from("mortgage_specializations").select("*").order("name"),

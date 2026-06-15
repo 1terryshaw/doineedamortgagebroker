@@ -23,7 +23,7 @@ export interface Listing {
   id: string;
   name: string;
   slug: string;
-  description: string | null;
+  bio: string | null;
   phone: string | null;
   email: string | null;
   website: string | null;
