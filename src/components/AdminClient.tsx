@@ -316,21 +316,21 @@ export default function AdminClient({
                   >
                     <td className="px-4 py-3">
                       <div className="font-medium text-[#0f2a4a]">
-                        {inquiry.name}
+                        {inquiry.sender_name}
                       </div>
                       <div className="text-xs text-gray-400 sm:hidden">
-                        {inquiry.email}
+                        {inquiry.sender_email}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-gray-600 hidden sm:table-cell">
-                      {inquiry.email}
+                      {inquiry.sender_email}
                     </td>
                     <td className="px-4 py-3 text-gray-600 hidden md:table-cell">
                       {inquiry.listing?.name ?? "—"}
                     </td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
-                        {inquiry.mortgage_type ?? "—"}
+                        {inquiry.loan_type ?? "—"}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-500 hidden lg:table-cell">

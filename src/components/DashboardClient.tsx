@@ -21,8 +21,8 @@ interface Listing {
 interface Inquiry {
   id: string;
   listing_id: string;
-  name: string;
-  email: string;
+  sender_name: string;
+  sender_email: string;
   message: string | null;
   status: string;
   created_at: string;
@@ -70,7 +70,7 @@ export default function DashboardClient({
         {
           event: "INSERT",
           schema: "public",
-          table: "inquiries",
+          table: "mortgage_inquiries",
         },
         (payload) => {
           const newInquiry = payload.new as Inquiry;
@@ -620,10 +620,10 @@ export default function DashboardClient({
                         <div className="flex items-start justify-between">
                           <div>
                             <p className="font-semibold text-navy-900">
-                              {inquiry.name}
+                              {inquiry.sender_name}
                             </p>
                             <p className="text-sm text-navy-500">
-                              {inquiry.email}
+                              {inquiry.sender_email}
                             </p>
                           </div>
                           <InquiryStatusBadge status={inquiry.status} />
@@ -649,12 +649,12 @@ export default function DashboardClient({
                       <div className="hidden sm:grid grid-cols-12 gap-4 items-center">
                         <div className="col-span-3">
                           <p className="font-semibold text-navy-900 truncate">
-                            {inquiry.name}
+                            {inquiry.sender_name}
                           </p>
                         </div>
                         <div className="col-span-3">
                           <p className="text-sm text-navy-600 truncate">
-                            {inquiry.email}
+                            {inquiry.sender_email}
                           </p>
                         </div>
                         <div className="col-span-3">

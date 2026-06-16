@@ -151,12 +151,19 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const { data: notificationTemplate } = await supabase
-        .from("mortgage_email_templates")
-        .select("*")
-        .eq("name", "inquiry_notification")
-        .eq("active", true)
-        .single();
+      const { data: notificationTemplate, error: notificationTemplateError } =
+        await supabase
+          .from("mortgage_email_templates")
+          .select("*")
+          .eq("name", "inquiry_notification")
+          .single();
+
+      if (notificationTemplateError || !notificationTemplate) {
+        console.error(
+          "Error loading inquiry_notification template:",
+          notificationTemplateError
+        );
+      }
 
       if (!pitched && notificationTemplate) {
         const templateVars: Record<string, string> = {
@@ -179,12 +186,19 @@ export async function POST(request: NextRequest) {
       }
 
       // Branded confirmation to the inquirer.
-      const { data: confirmationTemplate } = await supabase
-        .from("mortgage_email_templates")
-        .select("*")
-        .eq("name", "inquiry_confirmation")
-        .eq("active", true)
-        .single();
+      const { data: confirmationTemplate, error: confirmationTemplateError } =
+        await supabase
+          .from("mortgage_email_templates")
+          .select("*")
+          .eq("name", "inquiry_confirmation")
+          .single();
+
+      if (confirmationTemplateError || !confirmationTemplate) {
+        console.error(
+          "Error loading inquiry_confirmation template:",
+          confirmationTemplateError
+        );
+      }
 
       if (confirmationTemplate) {
         const confirmVars: Record<string, string> = {

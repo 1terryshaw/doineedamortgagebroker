@@ -64,11 +64,11 @@ export interface Listing {
 export interface Inquiry {
   id: string;
   listing_id: string;
-  name: string;
-  email: string;
-  phone: string | null;
+  sender_name: string;
+  sender_email: string;
+  sender_phone: string | null;
   message: string | null;
-  mortgage_type: string | null;
+  loan_type: string | null;
   property_value: number | null;
   down_payment: number | null;
   employment_type: string | null;
