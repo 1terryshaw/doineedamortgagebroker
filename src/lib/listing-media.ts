@@ -2,8 +2,8 @@
 // of shape. Accepts: string[], Array<{ url: string }>, null, undefined, or
 // anything else. Always returns an array (empty on unrecognized shape) — never
 // throws. NOTE: the shape is unverified — every `cached_photos` value in
-// mortgage_listings was NULL at write time (TDL #610), so this helper is written
-// defensively to tolerate whatever an enrichment pass (TDL #611) eventually
+// mortgage_listings was NULL at write time (TDL #612), so this helper is written
+// defensively to tolerate whatever an enrichment pass (TDL #613) eventually
 // lands.
 export function getPhotoUrls(cached: unknown): string[] {
   if (!Array.isArray(cached)) return [];
