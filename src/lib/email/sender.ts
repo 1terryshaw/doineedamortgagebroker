@@ -64,7 +64,7 @@ export async function sendEmail({
 
     const { error: logError } = await supabase.from("mortgage_email_log").insert({
       template_name: templateName,
-      recipient_email: to,
+      to_email: to,
       subject,
       status: "sent",
       metadata: metadata || {},
@@ -85,10 +85,10 @@ export async function sendEmail({
 
     const { error: logError } = await supabase.from("mortgage_email_log").insert({
       template_name: templateName,
-      recipient_email: to,
+      to_email: to,
       subject,
       status: "failed",
-      error_message: errorMessage,
+      error: errorMessage,
       metadata: metadata || {},
     });
     if (logError) {
