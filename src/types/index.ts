@@ -41,6 +41,11 @@ export interface Listing {
   photo_url: string | null;
   hero_image_url: string | null;
   years_experience: number | null;
+  // "Boost your listing" fields (TDL Boost port) — see mortgage_listings schema
+  services?: string[] | null;
+  service_area?: string[] | null;
+  gbp_url?: string | null;
+  hours_json?: unknown;
   license_number: string | null;
   languages: string[];
   enrichment_status: string;
