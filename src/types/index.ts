@@ -37,10 +37,10 @@ export interface Listing {
   google_place_id: string | null;
   google_rating: number | null;
   google_review_count: number;
-  google_photos: string[];
-  logo_url: string | null;
-  cover_image_url: string | null;
-  years_in_business: number | null;
+  cached_photos: unknown;
+  photo_url: string | null;
+  hero_image_url: string | null;
+  years_experience: number | null;
   license_number: string | null;
   languages: string[];
   enrichment_status: string;

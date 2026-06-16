@@ -51,9 +51,9 @@ export default function ListingCard({ listing }: ListingCardProps) {
     >
       {/* Cover image */}
       <div className="relative h-36 w-full overflow-hidden rounded-t-xl bg-gradient-to-br from-[#0f2a4a] to-teal-700">
-        {listing.cover_image_url ? (
+        {listing.hero_image_url || listing.photo_url ? (
           <img
-            src={listing.cover_image_url}
+            src={listing.hero_image_url || listing.photo_url || undefined}
             alt={listing.name}
             className="h-full w-full object-cover transition-transform group-hover:scale-105"
           />
@@ -74,9 +74,9 @@ export default function ListingCard({ listing }: ListingCardProps) {
       <div className="p-4">
         {/* Logo + Name */}
         <div className="flex items-start gap-3">
-          {listing.logo_url ? (
+          {listing.photo_url ? (
             <img
-              src={listing.logo_url}
+              src={listing.photo_url}
               alt=""
               className="h-10 w-10 shrink-0 rounded-full border border-gray-200 object-cover"
             />

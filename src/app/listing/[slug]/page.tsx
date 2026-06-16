@@ -5,6 +5,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { SITE_NAME, SITE_URL, INQUIRY_NO_EMAIL_POLICY } from "@/lib/constants";
 import { hasDeliverableEmail } from "@/lib/inquiry-guard";
 import { COUNTRY } from "@/lib/country";
+import { getPhotoUrls } from "@/lib/listing-media";
 import { Listing } from "@/types";
 import InquiryForm from "@/components/InquiryForm";
 import { LocalBusinessJsonLd } from "@/components/JsonLd";
@@ -59,6 +60,7 @@ export async function generateMetadata({
 
   const stateLabel = listing.state_province || listing.province || "US";
   const title = `${listing.name} \u2014 Mortgage Broker in ${cityName}, ${stateLabel} | ${SITE_NAME}`;
+  const ogImage = listing.hero_image_url || listing.photo_url || undefined;
 
   return {
     title,
@@ -67,9 +69,7 @@ export async function generateMetadata({
       title,
       description,
       type: "website",
-      ...(listing.cover_image_url && {
-        images: [{ url: listing.cover_image_url }],
-      }),
+      ...(ogImage && { images: [{ url: ogImage }] }),
     },
   };
 }
@@ -99,11 +99,16 @@ export default async function ListingPage({ params }: PageProps) {
         .join(", ");
 
   const listingUrl = `${SITE_URL}/listing/${listing.slug}`;
-  const images = listing.google_photos?.length
-    ? listing.google_photos
-    : listing.cover_image_url
-      ? [listing.cover_image_url]
-      : undefined;
+  const galleryUrls = getPhotoUrls(listing.cached_photos);
+  const fallbackUrls = [listing.hero_image_url, listing.photo_url].filter(
+    Boolean
+  ) as string[];
+  const images =
+    galleryUrls.length > 0
+      ? galleryUrls
+      : fallbackUrls.length > 0
+        ? fallbackUrls
+        : undefined;
 
   const faqItems = [
     {
@@ -195,10 +200,10 @@ export default async function ListingPage({ params }: PageProps) {
           <div className="lg:col-span-2 space-y-6">
             {/* Header Card */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              {listing.cover_image_url && (
+              {(listing.hero_image_url || listing.photo_url) && (
                 <div className="h-48 sm:h-64 w-full overflow-hidden">
                   <img
-                    src={listing.cover_image_url}
+                    src={listing.hero_image_url || listing.photo_url || undefined}
                     alt={`${listing.name} cover`}
                     className="w-full h-full object-cover"
                   />
@@ -207,9 +212,9 @@ export default async function ListingPage({ params }: PageProps) {
 
               <div className="p-6 sm:p-8">
                 <div className="flex items-start gap-4">
-                  {listing.logo_url && (
+                  {listing.photo_url && (
                     <img
-                      src={listing.logo_url}
+                      src={listing.photo_url}
                       alt={`${listing.name} logo`}
                       className="w-16 h-16 rounded-lg object-cover border border-gray-200 flex-shrink-0"
                     />
@@ -275,7 +280,7 @@ export default async function ListingPage({ params }: PageProps) {
                       License: {listing.license_number}
                     </span>
                   )}
-                  {listing.years_in_business && (
+                  {listing.years_experience && (
                     <span className="flex items-center gap-1">
                       <svg
                         className="w-4 h-4 text-teal-600"
@@ -290,7 +295,7 @@ export default async function ListingPage({ params }: PageProps) {
                           d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                         />
                       </svg>
-                      {listing.years_in_business}+ years in business
+                      {listing.years_experience}+ years in business
                     </span>
                   )}
                 </div>
