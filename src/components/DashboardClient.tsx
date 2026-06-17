@@ -2,11 +2,20 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import OwnerEditForm from "@/components/OwnerEditForm";
+import ListingStrengthCard from "@/components/ListingStrengthCard";
+import { computeListingHealth } from "@/lib/listing-health";
+import { canonical } from "@/lib/vertical-canonical";
+import type { ListingPhoto, HoursJson } from "@/lib/listing-extras";
+
+type PhotoBundle = { photos: ListingPhoto[]; logo: ListingPhoto | null };
 
 interface Listing {
   id: string;
+  slug: string;
   name: string;
   bio: string | null;
+  short_description?: string | null;
   phone: string | null;
   email: string | null;
   website: string | null;
@@ -14,6 +23,16 @@ interface Listing {
   city: string | null;
   state: string | null;
   zip_code: string | null;
+  province_state?: string | null;
+  services?: string[] | null;
+  service_area?: string[] | null;
+  gbp_url?: string | null;
+  hours_json?: HoursJson | null;
+  tier?: string | null;
+  subscription_tier?: string | null;
+  hero_image_url?: string | null;
+  google_review_count?: number | null;
+  updated_at?: string | null;
   claimed_by: string | null;
   [key: string]: unknown;
 }
@@ -33,12 +52,14 @@ interface DashboardClientProps {
   user: { id: string; email: string };
   listings: Listing[];
   inquiries: Inquiry[];
+  photosByListing?: Record<string, PhotoBundle>;
 }
 
 export default function DashboardClient({
   user,
   listings: initialListings,
   inquiries: initialInquiries,
+  photosByListing = {},
 }: DashboardClientProps) {
   const [activeTab, setActiveTab] = useState<"listings" | "inquiries">(
     "listings"
@@ -47,7 +68,6 @@ export default function DashboardClient({
   const [inquiries, setInquiries] =
     useState<Inquiry[]>(initialInquiries);
   const [editingListing, setEditingListing] = useState<Listing | null>(null);
-  const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   // Claim listing state
@@ -139,42 +159,24 @@ export default function DashboardClient({
     }
   };
 
-  const handleEditSave = async () => {
-    if (!editingListing) return;
-    setSaving(true);
+  // Enter inline edit mode for a listing, optionally scrolling to a form
+  // section anchor (#photos, #services, …) once the form has rendered.
+  const enterEdit = (listing: Listing, anchor?: string) => {
+    setEditingListing({ ...listing });
     setSaveMessage(null);
-
-    try {
-      const res = await fetch("/api/listings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          listing_id: editingListing.id,
-          name: editingListing.name,
-          bio: editingListing.bio,
-          phone: editingListing.phone,
-          email: editingListing.email,
-          website: editingListing.website,
-        }),
-      });
-
-      const result = await res.json();
-
-      if (!res.ok) {
-        setSaveMessage(result.error || "Failed to update listing.");
-        return;
-      }
-
-      setListings((prev) =>
-        prev.map((l) => (l.id === editingListing.id ? result.listing : l))
-      );
-      setEditingListing(null);
-      setSaveMessage("Listing updated successfully!");
-    } catch {
-      setSaveMessage("An error occurred. Please try again.");
-    } finally {
-      setSaving(false);
+    if (anchor) {
+      setTimeout(() => {
+        document.querySelector(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 120);
     }
+  };
+
+  // OwnerEditForm POSTs to /api/owner/update itself; on success it calls this.
+  // The form already triggered router.refresh() (re-fetches server listings +
+  // photos), so we just exit edit mode and surface a confirmation.
+  const handleOwnerSaved = () => {
+    setEditingListing(null);
+    setSaveMessage("Listing updated successfully!");
   };
 
   const hasListings = listings.length > 0;
@@ -328,117 +330,18 @@ export default function DashboardClient({
                   className="bg-white rounded-2xl shadow-sm border border-navy-100 p-6"
                 >
                   {editingListing?.id === listing.id ? (
-                    /* Editing Form */
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-bold text-navy-900 mb-4">
-                        Edit Listing
-                      </h3>
-
-                      <div>
-                        <label className="block text-sm font-medium text-navy-700 mb-1">
-                          Business Name
-                        </label>
-                        <input
-                          type="text"
-                          value={editingListing.name}
-                          onChange={(e) =>
-                            setEditingListing({
-                              ...editingListing,
-                              name: e.target.value,
-                            })
-                          }
-                          className="w-full px-4 py-3 rounded-lg border border-navy-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 outline-none transition text-navy-900"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-navy-700 mb-1">
-                          Description
-                        </label>
-                        <textarea
-                          rows={3}
-                          value={editingListing.bio ?? ""}
-                          onChange={(e) =>
-                            setEditingListing({
-                              ...editingListing,
-                              bio: e.target.value,
-                            })
-                          }
-                          className="w-full px-4 py-3 rounded-lg border border-navy-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 outline-none transition text-navy-900 resize-none"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-navy-700 mb-1">
-                            Phone
-                          </label>
-                          <input
-                            type="tel"
-                            value={editingListing.phone ?? ""}
-                            onChange={(e) =>
-                              setEditingListing({
-                                ...editingListing,
-                                phone: e.target.value,
-                              })
-                            }
-                            className="w-full px-4 py-3 rounded-lg border border-navy-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 outline-none transition text-navy-900"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-navy-700 mb-1">
-                            Email
-                          </label>
-                          <input
-                            type="email"
-                            value={editingListing.email ?? ""}
-                            onChange={(e) =>
-                              setEditingListing({
-                                ...editingListing,
-                                email: e.target.value,
-                              })
-                            }
-                            className="w-full px-4 py-3 rounded-lg border border-navy-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 outline-none transition text-navy-900"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-navy-700 mb-1">
-                          Website
-                        </label>
-                        <input
-                          type="url"
-                          value={editingListing.website ?? ""}
-                          onChange={(e) =>
-                            setEditingListing({
-                              ...editingListing,
-                              website: e.target.value,
-                            })
-                          }
-                          placeholder="https://example.com"
-                          className="w-full px-4 py-3 rounded-lg border border-navy-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 outline-none transition text-navy-900 placeholder:text-navy-400"
-                        />
-                      </div>
-
-                      <div className="flex gap-3 pt-2">
-                        <button
-                          onClick={handleEditSave}
-                          disabled={saving}
-                          className="px-6 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:bg-teal-600/50 text-white font-semibold rounded-lg transition"
-                        >
-                          {saving ? "Saving..." : "Save Changes"}
-                        </button>
-                        <button
-                          onClick={() => setEditingListing(null)}
-                          className="px-6 py-2.5 bg-navy-100 hover:bg-navy-200 text-navy-700 font-semibold rounded-lg transition"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
+                    /* Inline owner edit form — ported accountant OwnerEditForm v1 (TDL #620).
+                       Self-submits to /api/owner/update; far richer than the old 5-field form. */
+                    <OwnerEditForm
+                      listing={editingListing}
+                      initialPhotos={photosByListing[listing.id]?.photos ?? []}
+                      initialLogo={photosByListing[listing.id]?.logo ?? null}
+                      onSaved={handleOwnerSaved}
+                      onCancel={() => setEditingListing(null)}
+                    />
                   ) : (
-                    /* Listing Display */
+                    /* Listing Display + inline strength card (TDL #620) */
+                    <>
                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
                         <h3 className="text-lg font-bold text-navy-900">
@@ -507,12 +410,30 @@ export default function DashboardClient({
                         </div>
                       </div>
                       <button
-                        onClick={() => setEditingListing({ ...listing })}
+                        onClick={() => enterEdit(listing)}
                         className="shrink-0 px-5 py-2.5 bg-navy-800 hover:bg-navy-900 text-white text-sm font-semibold rounded-lg transition"
                       >
                         Edit Listing
                       </button>
                     </div>
+                    <div className="mt-6 border-t border-navy-100 pt-6">
+                      <ListingStrengthCard
+                        health={computeListingHealth(
+                          {
+                            description: listing.bio,
+                            services: listing.services,
+                            service_area: listing.service_area,
+                            gbp_url: listing.gbp_url,
+                            google_review_count: listing.google_review_count,
+                            updated_at: listing.updated_at,
+                          },
+                          photosByListing[listing.id]?.photos.length ?? 0
+                        )}
+                        primaryColor={canonical.primaryColor}
+                        onEdit={(anchor) => enterEdit(listing, anchor)}
+                      />
+                    </div>
+                    </>
                   )}
                 </div>
               ))}

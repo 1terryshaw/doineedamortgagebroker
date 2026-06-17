@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import DashboardClient from "@/components/DashboardClient";
+import { listPhotosForListing } from "@/lib/listing-photos";
 
 export const metadata = {
   title: "Dashboard | Find Your Mortgage Broker",
@@ -41,6 +42,14 @@ export default async function DashboardPage() {
     inquiries = inquiryData ?? [];
   }
 
+  // Preload each claimed listing's photos + logo for the inline OwnerEditForm
+  // (PhotoUploader/LogoUploader start from these) and the ListingStrengthCard
+  // photo count (TDL #620). Owners hold few listings, so per-listing is fine.
+  const photoEntries = await Promise.all(
+    (listings ?? []).map(async (l) => [l.id, await listPhotosForListing(l.id)] as const)
+  );
+  const photosByListing = Object.fromEntries(photoEntries);
+
   return (
     <div className="min-h-screen bg-navy-50">
       {/* Top Nav */}
@@ -80,6 +89,7 @@ export default async function DashboardPage() {
           }}
           listings={listings ?? []}
           inquiries={inquiries}
+          photosByListing={photosByListing}
         />
       </main>
     </div>
