@@ -6,6 +6,7 @@ import { SITE_NAME, SITE_URL } from "@/lib/constants";
 import { COUNTRY } from "@/lib/country";
 import type { Region, Listing, Specialization } from "@/types";
 import ListingCard from "@/components/ListingCard";
+import { getCardMediaForListings } from "@/lib/listing-photos";
 import { ItemListJsonLd } from "@/components/JsonLd";
 import FAQSection from "@/components/FAQSection";
 
@@ -96,6 +97,9 @@ export default async function CityPage({ params }: PageProps) {
     getCityListings(city.id),
     getSpecializations(),
   ]);
+
+  // Batched owner media for the cards (one query, no per-card waterfall).
+  const cardMedia = await getCardMediaForListings(listings.map((l) => l.id));
 
   const itemListItems = listings.map((listing, index) => ({
     name: listing.name,
@@ -223,7 +227,12 @@ export default async function CityPage({ params }: PageProps) {
             </h2>
             <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {listings.map((listing) => (
-                <ListingCard key={listing.id} listing={listing} />
+                <ListingCard
+                  key={listing.id}
+                  listing={listing}
+                  ownerHeroUrl={cardMedia.get(listing.id)?.heroUrl}
+                  ownerLogoUrl={cardMedia.get(listing.id)?.logoUrl}
+                />
               ))}
             </div>
           </section>

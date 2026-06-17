@@ -3,6 +3,9 @@ import type { Listing } from "@/types";
 
 interface ListingCardProps {
   listing: Listing;
+  // Owner-uploaded media (from listing_photos), batched by the parent list page.
+  ownerHeroUrl?: string | null;
+  ownerLogoUrl?: string | null;
 }
 
 function StarRating({ rating }: { rating: number | null }) {
@@ -38,7 +41,17 @@ function StarRating({ rating }: { rating: number | null }) {
   );
 }
 
-export default function ListingCard({ listing }: ListingCardProps) {
+export default function ListingCard({
+  listing,
+  ownerHeroUrl,
+  ownerLogoUrl,
+}: ListingCardProps) {
+  // Render precedence (TDL Boost port, Phase F):
+  //   card image: hero_image_url -> owner photo #0 (listing_photos) -> photo_url
+  //   logo:       owner logo (listing_photos) -> photo_url
+  const cardImage =
+    listing.hero_image_url || ownerHeroUrl || listing.photo_url || undefined;
+  const cardLogo = ownerLogoUrl || listing.photo_url || undefined;
   const specializations =
     listing.specializations ??
     listing.mortgage_listing_specializations?.map((ls) => ls.mortgage_specializations) ??
@@ -51,9 +64,9 @@ export default function ListingCard({ listing }: ListingCardProps) {
     >
       {/* Cover image */}
       <div className="relative h-36 w-full overflow-hidden rounded-t-xl bg-gradient-to-br from-[#0f2a4a] to-teal-700">
-        {listing.hero_image_url || listing.photo_url ? (
+        {cardImage ? (
           <img
-            src={listing.hero_image_url || listing.photo_url || undefined}
+            src={cardImage}
             alt={listing.name}
             className="h-full w-full object-cover transition-transform group-hover:scale-105"
           />
@@ -74,9 +87,9 @@ export default function ListingCard({ listing }: ListingCardProps) {
       <div className="p-4">
         {/* Logo + Name */}
         <div className="flex items-start gap-3">
-          {listing.photo_url ? (
+          {cardLogo ? (
             <img
-              src={listing.photo_url}
+              src={cardLogo}
               alt=""
               className="h-10 w-10 shrink-0 rounded-full border border-gray-200 object-cover"
             />

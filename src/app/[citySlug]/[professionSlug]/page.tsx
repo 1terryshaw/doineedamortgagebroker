@@ -6,6 +6,7 @@ import { SITE_NAME } from "@/lib/constants";
 import { COUNTRY } from "@/lib/country";
 import type { Region, Listing, Specialization } from "@/types";
 import ListingCard from "@/components/ListingCard";
+import { getCardMediaForListings } from "@/lib/listing-photos";
 
 interface PageProps {
   params: Promise<{ citySlug: string; professionSlug: string }>;
@@ -115,6 +116,9 @@ export default async function CitySpecializationPage({ params }: PageProps) {
 
   const listings = await getListingsBySpecAndCity(city.id, specialization.id);
 
+  // Batched owner media for the cards (one query, no per-card waterfall).
+  const cardMedia = await getCardMediaForListings(listings.map((l) => l.id));
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Hero */}
@@ -212,7 +216,12 @@ export default async function CitySpecializationPage({ params }: PageProps) {
             </h2>
             <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {listings.map((listing) => (
-                <ListingCard key={listing.id} listing={listing} />
+                <ListingCard
+                  key={listing.id}
+                  listing={listing}
+                  ownerHeroUrl={cardMedia.get(listing.id)?.heroUrl}
+                  ownerLogoUrl={cardMedia.get(listing.id)?.logoUrl}
+                />
               ))}
             </div>
           </section>

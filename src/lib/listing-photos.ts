@@ -113,3 +113,38 @@ export async function compactPhotoOrder(listingId: string): Promise<void> {
     }
   }
 }
+
+// Batched media for list/card views: ONE query for many listings (no per-card
+// waterfall). Returns the hero photo (kind='photo', display_order 0) and the
+// logo public_url per listing_id.
+export async function getCardMediaForListings(
+  listingIds: string[]
+): Promise<Map<string, { heroUrl: string | null; logoUrl: string | null }>> {
+  const map = new Map<string, { heroUrl: string | null; logoUrl: string | null }>();
+  if (listingIds.length === 0) return map;
+
+  const { data } = await supabaseAdmin
+    .from("listing_photos")
+    .select("listing_id, public_url, display_order, photo_kind")
+    .eq("vertical", VERTICAL_KEY)
+    .in("listing_id", listingIds)
+    .is("deleted_at", null)
+    .order("display_order", { ascending: true });
+
+  for (const r of (data ?? []) as Array<{
+    listing_id: string;
+    public_url: string;
+    display_order: number;
+    photo_kind: PhotoKind;
+  }>) {
+    const cur = map.get(r.listing_id) ?? { heroUrl: null, logoUrl: null };
+    if (r.photo_kind === "logo") {
+      if (!cur.logoUrl) cur.logoUrl = r.public_url;
+    } else if (cur.heroUrl === null) {
+      // ASC order → the first 'photo' row is display_order 0 (the hero).
+      cur.heroUrl = r.public_url;
+    }
+    map.set(r.listing_id, cur);
+  }
+  return map;
+}

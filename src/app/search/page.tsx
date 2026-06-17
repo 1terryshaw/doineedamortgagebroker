@@ -5,6 +5,7 @@ import { COUNTRY, PROVINCE_WHITELIST } from "@/lib/country";
 import { JURISDICTION } from "@/lib/jurisdiction";
 import type { Listing, Region, Specialization, SearchParams } from "@/types";
 import ListingCard from "@/components/ListingCard";
+import { getCardMediaForListings } from "@/lib/listing-photos";
 import { ItemListJsonLd } from "@/components/JsonLd";
 import type { Metadata } from "next";
 
@@ -122,6 +123,11 @@ export default async function SearchPage({ searchParams }: PageProps) {
       );
     }
   }
+
+  // Batched owner media for the cards on this page (one query, no waterfall).
+  const cardMedia = await getCardMediaForListings(
+    filteredListings.map((l) => l.id)
+  );
 
   const totalCount = count ?? 0;
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
@@ -429,7 +435,12 @@ export default async function SearchPage({ searchParams }: PageProps) {
             {filteredListings.length > 0 ? (
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
                 {filteredListings.map((listing) => (
-                  <ListingCard key={listing.id} listing={listing} />
+                  <ListingCard
+                    key={listing.id}
+                    listing={listing}
+                    ownerHeroUrl={cardMedia.get(listing.id)?.heroUrl}
+                    ownerLogoUrl={cardMedia.get(listing.id)?.logoUrl}
+                  />
                 ))}
               </div>
             ) : (

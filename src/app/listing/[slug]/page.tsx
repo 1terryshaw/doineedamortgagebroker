@@ -6,6 +6,8 @@ import { SITE_NAME, SITE_URL, INQUIRY_NO_EMAIL_POLICY } from "@/lib/constants";
 import { hasDeliverableEmail } from "@/lib/inquiry-guard";
 import { COUNTRY } from "@/lib/country";
 import { getPhotoUrls } from "@/lib/listing-media";
+import { listPhotosForListing } from "@/lib/listing-photos";
+import ListingGallery from "@/components/ListingGallery";
 import { Listing } from "@/types";
 import InquiryForm from "@/components/InquiryForm";
 import { LocalBusinessJsonLd } from "@/components/JsonLd";
@@ -60,6 +62,9 @@ export async function generateMetadata({
 
   const stateLabel = listing.state_province || listing.province || "US";
   const title = `${listing.name} \u2014 Mortgage Broker in ${cityName}, ${stateLabel} | ${SITE_NAME}`;
+  // OG v1: banner hero -> photo_url. TODO(boost v2): fetch listing_photos here
+  // (wrapped in React cache() to dedupe with the page's own fetch) so OG aligns
+  // with the page hero when only owner gallery photos — no banner — are set.
   const ogImage = listing.hero_image_url || listing.photo_url || undefined;
 
   return {
@@ -99,16 +104,38 @@ export default async function ListingPage({ params }: PageProps) {
         .join(", ");
 
   const listingUrl = `${SITE_URL}/listing/${listing.slug}`;
-  const galleryUrls = getPhotoUrls(listing.cached_photos);
-  const fallbackUrls = [listing.hero_image_url, listing.photo_url].filter(
-    Boolean
-  ) as string[];
-  const images =
-    galleryUrls.length > 0
-      ? galleryUrls
-      : fallbackUrls.length > 0
-        ? fallbackUrls
-        : undefined;
+
+  // Owner-uploaded media (listing_photos) merged with #612 cached_photos fallback.
+  // Hero precedence (Phase F): hero_image_url -> owner photo #0 -> photo_url.
+  const { photos: ownerPhotos, logo: ownerLogo } = await listPhotosForListing(
+    listing.id
+  );
+  const heroUrl =
+    listing.hero_image_url ??
+    ownerPhotos[0]?.public_url ??
+    listing.photo_url ??
+    null;
+  const logoUrl = ownerLogo?.public_url ?? listing.photo_url ?? null;
+  const cachedUrls = getPhotoUrls(listing.cached_photos);
+  // Gallery dedup: if a dedicated banner hero (hero_image_url) is set, ALL owner
+  // photos go to the gallery; if not, owner photo #0 was promoted to the hero
+  // above, so slice it off. No owner photos -> cached_photos fallback.
+  const galleryItems =
+    ownerPhotos.length > 0
+      ? (listing.hero_image_url ? ownerPhotos : ownerPhotos.slice(1)).map((p) => ({
+          id: p.id,
+          public_url: p.public_url,
+        }))
+      : cachedUrls.map((url, i) => ({ id: `cached-${i}`, public_url: url }));
+  // JSON-LD images: hero first (primary image follows the hero precedence),
+  // then the remaining owner/cached photos, de-duplicated.
+  const allImageUrls =
+    ownerPhotos.length > 0 ? ownerPhotos.map((p) => p.public_url) : cachedUrls;
+  const images = heroUrl
+    ? [heroUrl, ...allImageUrls.filter((u) => u !== heroUrl)]
+    : allImageUrls.length > 0
+      ? allImageUrls
+      : undefined;
 
   const faqItems = [
     {
@@ -200,10 +227,10 @@ export default async function ListingPage({ params }: PageProps) {
           <div className="lg:col-span-2 space-y-6">
             {/* Header Card */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              {(listing.hero_image_url || listing.photo_url) && (
+              {heroUrl && (
                 <div className="h-48 sm:h-64 w-full overflow-hidden">
                   <img
-                    src={listing.hero_image_url || listing.photo_url || undefined}
+                    src={heroUrl}
                     alt={`${listing.name} cover`}
                     className="w-full h-full object-cover"
                   />
@@ -212,9 +239,9 @@ export default async function ListingPage({ params }: PageProps) {
 
               <div className="p-6 sm:p-8">
                 <div className="flex items-start gap-4">
-                  {listing.photo_url && (
+                  {logoUrl && (
                     <img
-                      src={listing.photo_url}
+                      src={logoUrl}
                       alt={`${listing.name} logo`}
                       className="w-16 h-16 rounded-lg object-cover border border-gray-200 flex-shrink-0"
                     />
@@ -301,6 +328,16 @@ export default async function ListingPage({ params }: PageProps) {
                 </div>
               </div>
             </div>
+
+            {/* Photo gallery (owner uploads → cached_photos fallback) */}
+            {galleryItems.length > 0 && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+                <h2 className="text-xl font-semibold text-[#1B2A4A] mb-2">
+                  Photos
+                </h2>
+                <ListingGallery photos={galleryItems} />
+              </div>
+            )}
 
             {/* Description */}
             {listing.bio && (
