@@ -182,7 +182,7 @@ export default async function HomePage() {
                 reviews, and grow your business.
               </p>
               <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                <Link href="/signup" className="btn-primary px-8 py-3 text-base">
+                <Link href="/search" className="btn-primary px-8 py-3 text-base">
                   Claim Your Listing
                 </Link>
                 <Link

@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     const { data: listing } = await supabase
       .from("mortgage_listings")
       .select(
-        "id, name, email, owner_email, claimed, tier, subscription_tier, last_claim_pitch_at"
+        "id, slug, name, email, owner_email, claimed, tier, subscription_tier, last_claim_pitch_at"
       )
       .eq("id", listing_id)
       .single();
@@ -125,6 +125,7 @@ export async function POST(request: NextRequest) {
       if (shouldPitch(listing!) && caslReady && !(await isSuppressed(forwardTo))) {
         const pitch = buildClaimPitchEmail({
           to: forwardTo,
+          slug: listing!.slug,
           businessName: listing!.name,
           inquirerName: name,
           inquirerEmail: email,

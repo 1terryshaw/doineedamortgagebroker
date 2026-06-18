@@ -18,7 +18,7 @@ export interface ListingHealth {
 }
 
 interface HealthInput {
-  description?: string | null;
+  bio?: string | null; // mortgage's long-description column (not `description`, TDL #604)
   services?: string[] | null;
   service_area?: string[] | null;
   gbp_url?: string | null;
@@ -32,7 +32,7 @@ export function computeListingHealth(
   listing: HealthInput,
   photoCount: number
 ): ListingHealth {
-  const description = (listing.description ?? "").trim();
+  const description = (listing.bio ?? "").trim();
   const services = listing.services ?? [];
   const serviceArea = listing.service_area ?? [];
   const reviewCount = listing.google_review_count ?? 0;

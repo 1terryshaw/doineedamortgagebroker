@@ -142,7 +142,11 @@ export default function OwnerEditForm({
         setErrorMessage("");
         setStatus("saved");
         router.refresh();
-        setTimeout(() => onSaved?.(), 800);
+        setTimeout(() => {
+          // Standalone (owner portal) has no onSaved handler → return to the portal.
+          if (onSaved) onSaved();
+          else router.push(`/owner/${listing.slug}`);
+        }, 800);
       } else {
         let msg = "Failed to save. Please try again.";
         try {
@@ -335,7 +339,7 @@ export default function OwnerEditForm({
           style={{ backgroundColor: canonical.primaryColor }}>
           {status === "saving" ? "Saving..." : "Save Changes"}
         </button>
-        <button type="button" onClick={() => onCancel?.()}
+        <button type="button" onClick={() => { if (onCancel) onCancel(); else router.push(`/owner/${listing.slug}`); }}
           className="px-6 py-2 border rounded-lg font-medium hover:bg-gray-50">
           Cancel
         </button>

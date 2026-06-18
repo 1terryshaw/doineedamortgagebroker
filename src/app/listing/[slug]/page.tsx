@@ -423,7 +423,7 @@ export default async function ListingPage({ params }: PageProps) {
                     customer inquiries directly.
                   </p>
                   <a
-                    href="/signup"
+                    href={`/claim/${listing.slug}`}
                     className="inline-flex items-center rounded-lg bg-[#1B2A4A] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#152238] transition-colors"
                   >
                     Claim this listing &rarr;

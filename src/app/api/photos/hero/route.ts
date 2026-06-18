@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { randomUUID } from "crypto";
 import sharp from "sharp";
 import { supabaseAdmin, LISTINGS_TABLE } from "@/lib/supabase-admin";
-import { getOwnedListingBySlug } from "@/lib/owner-auth";
+import { getAuthFromCookies } from "@/lib/auth";
 import { PHOTO_BUCKET, VERTICAL_KEY, publicUrlFor } from "@/lib/listing-photos";
 import { can } from "@/lib/tier-capabilities";
 
@@ -18,13 +19,16 @@ interface AuthedListing {
   subscription_tier: string | null;
 }
 
-// Supabase Auth + claimed_by ownership (hybrid model — see lib/owner-auth).
-async function authListing(slug: string): Promise<AuthedListing | null> {
-  if (!slug) return null;
-  const listing = await getOwnedListingBySlug(
-    slug,
-    "id, tier, subscription_tier"
-  );
+// Owner-token cookie auth (TDL #624) — the cookie scopes to a single listing.
+async function authListing(): Promise<AuthedListing | null> {
+  const auth = getAuthFromCookies(await cookies());
+  if (!auth) return null;
+  const { data: listing } = await supabaseAdmin
+    .from(LISTINGS_TABLE)
+    .select("id, tier, subscription_tier")
+    .eq("slug", auth.slug)
+    .eq("owner_auth_token", auth.token)
+    .single();
   return (listing as unknown as AuthedListing | null) ?? null;
 }
 
@@ -37,8 +41,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid multipart body" }, { status: 400 });
   }
 
-  const slug = String(formData.get("slug") ?? "");
-  const listing = await authListing(slug);
+  const listing = await authListing();
   if (!listing) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -94,10 +97,9 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ hero_image_url: heroUrl });
 }
 
-// DELETE — clear the hero cover image. Target listing named via ?slug=.
-export async function DELETE(request: NextRequest) {
-  const slug = new URL(request.url).searchParams.get("slug") ?? "";
-  const listing = await authListing(slug);
+// DELETE — clear the hero cover image (owner-token cookie scopes the listing).
+export async function DELETE() {
+  const listing = await authListing();
   if (!listing) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

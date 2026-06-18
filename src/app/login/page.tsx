@@ -50,13 +50,13 @@ export default function LoginPage() {
             </h1>
           </Link>
           <p className="mt-2 text-navy-300">
-            Log in to manage your broker listing.
+            Operator access.
           </p>
         </div>
 
         {/* Login Card */}
         <div className="bg-white rounded-2xl shadow-xl p-8">
-          <h2 className="text-2xl font-bold text-navy-900 mb-6">Log In</h2>
+          <h2 className="text-2xl font-bold text-navy-900 mb-6">Admin Login</h2>
 
           {error && (
             <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">

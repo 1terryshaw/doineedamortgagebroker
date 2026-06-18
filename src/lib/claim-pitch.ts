@@ -1,5 +1,5 @@
 // src/lib/claim-pitch.ts — TDL #472 lead-to-claim (mortgagebroker bespoke port).
-// CTA destination is /signup (this directory claims via signup, not /claim/{slug}).
+// CTA destination is /claim/{slug} (empire-standard owner-token claim flow, TDL #624).
 
 import { JURISDICTION } from "@/lib/jurisdiction";
 
@@ -10,7 +10,9 @@ const DIRECTORY_NAME = `${JURISDICTION.brandName}.${DISPLAY_DOMAIN.split(".").po
 const CASL_SENDER = "Smart Website Management";
 const PITCH_INTERVAL_MS = 14 * 24 * 60 * 60 * 1000; // <= 1 pitch / 14 days / recipient
 
-export const CLAIM_PATH = "/signup";
+// TDL #624: mortgage moved off the /signup flow onto the empire-standard
+// /claim/{slug} owner-token claim flow (was the documented manifest exception).
+export const CLAIM_PATH = "/claim/{slug}";
 export const VERTICAL_KEY = "mortgagebroker";
 
 export interface PitchListing {
@@ -36,11 +38,12 @@ export function shouldPitch(l: PitchListing): boolean {
   return Date.now() - last > PITCH_INTERVAL_MS;
 }
 
-// Tracked claim link -> /signup. No &v= (QP-safe + vertical is implicit here). lid carries
-// the "i-" QP-hardening marker (stripped in /api/unsubscribe is N/A; here it's the claim id).
-export function claimUrl(leadId: string | null): string {
+// Tracked claim link -> /claim/{slug}. lid carries the "i-" QP-hardening marker
+// (a UUID leadId starting with 2 hex chars would otherwise be quoted-printable-mangled).
+export function claimUrl(slug: string, leadId: string | null): string {
   const lid = leadId ? `&lid=i-${encodeURIComponent(leadId)}` : "";
-  return `${SITE_URL}${CLAIM_PATH}?src=lead${lid}`;
+  const path = CLAIM_PATH.replace("{slug}", slug);
+  return `${SITE_URL}${path}?src=lead${lid}`;
 }
 
 export function unsubscribeUrl(toEmail: string): string {
@@ -53,6 +56,7 @@ export function unsubscribeUrl(toEmail: string): string {
 // List-Unsubscribe / List-Unsubscribe-Post headers.
 export function buildClaimPitchEmail(args: {
   to: string;
+  slug: string;
   businessName: string;
   inquirerName: string;
   inquirerEmail: string;
@@ -64,7 +68,7 @@ export function buildClaimPitchEmail(args: {
   const postalAddress = (process.env.CASL_POSTAL_ADDRESS || "").trim();
   if (!postalAddress) return null; // fail-closed: never emit a CEM without a physical address
 
-  const cta = claimUrl(args.leadId);
+  const cta = claimUrl(args.slug, args.leadId);
   const unsub = unsubscribeUrl(args.to);
   const subject = `New lead from ${DIRECTORY_NAME} — ${args.inquirerName}`;
 
