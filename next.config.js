@@ -18,6 +18,11 @@ const nextConfig = {
       // (mortgage_regions dup rows deleted; listings migrated to correct city).
       { source: '/altantis', destination: '/atlantis', permanent: true },
       { source: '/altomonte-springs', destination: '/altamonte-springs', permanent: true },
+      // TDL #624 owner-token cutover: deprecated owner-Supabase pages.
+      // Platform-level 308 + Location (server-component redirect() on these
+      // static pages emitted a 307 without Location — see Phase I smoke item B).
+      { source: '/signup', destination: '/owner/login', permanent: true },
+      { source: '/dashboard', destination: '/owner/login', permanent: true },
     ];
   },
 };
