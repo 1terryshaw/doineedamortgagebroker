@@ -420,7 +420,7 @@ export default function DashboardClient({
                       <ListingStrengthCard
                         health={computeListingHealth(
                           {
-                            description: listing.bio,
+                            bio: listing.bio,
                             services: listing.services,
                             service_area: listing.service_area,
                             gbp_url: listing.gbp_url,

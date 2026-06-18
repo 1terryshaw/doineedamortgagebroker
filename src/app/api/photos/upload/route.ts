@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { randomUUID } from "crypto";
 import sharp from "sharp";
 import { supabaseAdmin, LISTINGS_TABLE } from "@/lib/supabase-admin";
-import { getOwnedListingBySlug } from "@/lib/owner-auth";
+import { getAuthFromCookies } from "@/lib/auth";
 import { canonical } from "@/lib/vertical-canonical";
 import {
   ACCEPTED_MIME,
@@ -30,16 +31,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid form data" }, { status: 400 });
   }
 
-  // Supabase Auth + claimed_by ownership (hybrid model — see lib/owner-auth).
-  // The form names the target listing via a `slug` field.
-  const slug = String(formData.get("slug") ?? "");
-  if (!slug) {
-    return NextResponse.json({ error: "Missing listing slug" }, { status: 400 });
+  // Owner-token cookie auth (TDL #624): the cookie scopes to a single listing
+  // (slug:token); we authorize against its owner_auth_token.
+  const auth = getAuthFromCookies(await cookies());
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const listing = await getOwnedListingBySlug(
-    slug,
-    "id, slug, owner_email, tier, subscription_tier"
-  );
+  const { data: listing } = await supabaseAdmin
+    .from(LISTINGS_TABLE)
+    .select("id, slug, owner_email, tier, subscription_tier")
+    .eq("slug", auth.slug)
+    .eq("owner_auth_token", auth.token)
+    .single();
   if (!listing) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

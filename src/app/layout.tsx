@@ -91,10 +91,10 @@ function Header() {
           <Link href="/search" className="nav-link">
             Search
           </Link>
-          <Link href="/signup" className="nav-link">
-            Sign Up
+          <Link href="/owner/login" className="nav-link">
+            Owner Login
           </Link>
-          <Link href="/login" className="btn-primary text-sm">
+          <Link href="/owner/login" className="btn-primary text-sm">
             Login
           </Link>
         </nav>
@@ -127,7 +127,7 @@ function MobileMenuButton() {
           />
         </svg>
       </Link>
-      <Link href="/login" className="btn-primary px-3 py-1.5 text-xs">
+      <Link href="/owner/login" className="btn-primary px-3 py-1.5 text-xs">
         Login
       </Link>
     </div>
@@ -179,8 +179,8 @@ function Footer() {
                 </Link>
               </li>
               <li>
-                <Link href="/signup" className="footer-link">
-                  List Your Business
+                <Link href="/owner/login" className="footer-link">
+                  Owner Login
                 </Link>
               </li>
             </ul>

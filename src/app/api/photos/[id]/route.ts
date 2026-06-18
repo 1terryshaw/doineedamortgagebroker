@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { supabaseAdmin, LISTINGS_TABLE } from "@/lib/supabase-admin";
-import { getOwnedListingById } from "@/lib/owner-auth";
+import { getAuthFromCookies } from "@/lib/auth";
 import {
   PHOTO_BUCKET,
   VERTICAL_KEY,
@@ -19,8 +20,22 @@ export async function DELETE(
     return NextResponse.json({ error: "Missing id" }, { status: 400 });
   }
 
-  // Fetch the photo, then verify its owning listing is claimed by the authed
-  // user (hybrid Supabase Auth + claimed_by — see lib/owner-auth).
+  // Owner-token cookie auth (TDL #624): resolve the cookie's listing, then
+  // confirm the photo belongs to it.
+  const auth = getAuthFromCookies(await cookies());
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const { data: listing } = await supabaseAdmin
+    .from(LISTINGS_TABLE)
+    .select("id")
+    .eq("slug", auth.slug)
+    .eq("owner_auth_token", auth.token)
+    .single();
+  if (!listing) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { data: photo, error: fetchError } = await supabaseAdmin
     .from("listing_photos")
     .select("id, storage_path, listing_id, photo_kind, vertical")
@@ -31,13 +46,8 @@ export async function DELETE(
   if (fetchError || !photo) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  if (photo.vertical !== VERTICAL_KEY) {
+  if (photo.vertical !== VERTICAL_KEY || photo.listing_id !== listing.id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  const listing = await getOwnedListingById(photo.listing_id as string, "id");
-  if (!listing) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { error: softErr } = await supabaseAdmin
