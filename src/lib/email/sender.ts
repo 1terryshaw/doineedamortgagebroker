@@ -1,14 +1,10 @@
-import nodemailer from "nodemailer";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { JURISDICTION } from "@/lib/jurisdiction";
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD,
-  },
-});
+// Inquiry + CASL-pitch transactional email migrated off Gmail SMTP to Resend
+// (notifications@smartwebsitemanagement.ca). Subject + HTML + List-Unsubscribe
+// headers preserved verbatim — only the transport changed (TDL #608 C.3).
+// The mortgage_email_log sent/failed audit rows are unchanged.
 
 interface SendEmailParams {
   to: string;
@@ -37,29 +33,28 @@ export async function sendEmail({
     htmlLength: html?.length ?? 0,
   });
 
-  console.log("[EMAIL DEBUG] SMTP config:", {
-    service: "gmail",
-    user: process.env.GMAIL_USER || "NOT SET",
-    passConfigured: !!process.env.GMAIL_APP_PASSWORD,
+  console.log("[EMAIL DEBUG] Resend config:", {
+    from: JURISDICTION.emailFromName,
+    keyConfigured: !!process.env.RESEND_API_KEY,
   });
 
   const supabase = await createServiceRoleClient();
 
   try {
-    console.log("[EMAIL DEBUG] Attempting transporter.sendMail...");
-    const info = await transporter.sendMail({
-      from: `"${JURISDICTION.emailFromName}" <${process.env.GMAIL_USER}>`,
+    console.log("[EMAIL DEBUG] Attempting resend.emails.send...");
+    const { Resend } = await import("resend");
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    const { data, error: sendError } = await resend.emails.send({
+      from: `${JURISDICTION.emailFromName} <notifications@smartwebsitemanagement.ca>`,
       to,
       subject,
       ...(headers ? { headers } : {}),
       html,
-      text: text || undefined,
+      ...(text ? { text } : {}),
     });
-    console.log("[EMAIL DEBUG] sendMail succeeded", {
-      messageId: info.messageId,
-      response: info.response,
-      accepted: info.accepted,
-      rejected: info.rejected,
+    if (sendError) throw new Error(sendError.message);
+    console.log("[EMAIL DEBUG] resend send succeeded", {
+      id: data?.id,
     });
 
     const { error: logError } = await supabase.from("mortgage_email_log").insert({
