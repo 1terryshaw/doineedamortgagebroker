@@ -11,8 +11,8 @@ export type DirectoryCity = {
 };
 
 export type DirectoryRegion = {
-  province: string; // 2-letter code (e.g. "ON")
-  name: string;     // "Ontario"
+  province: string;
+  name: string;
   cities: DirectoryCity[];
 };
 
@@ -35,7 +35,6 @@ export type DirectoryListing = {
   }> | null;
 };
 
-// Province code → full name (CA + US union, source-of-truth = provinces.ts)
 const PROVINCE_NAME_MAP: Map<string, string> = new Map([
   ...CANADIAN_PROVINCES.map((p) => [p.code, p.name] as [string, string]),
   ...US_STATES.map((s) => [s.code, s.name] as [string, string]),
@@ -46,18 +45,21 @@ function provinceName(code: string): string {
 }
 
 /**
- * Derive directory regions DIRECTLY from mortgage_listings.
- * mv_mortgage_listings_cities is empty (keyed on the empty province_state col)
- * and mortgage_regions is sparse — neither is viable.
+ * Derive directory regions directly from mortgage_listings.
+ * mv_mortgage_listings_cities is empty and mortgage_regions is sparse.
+ *
+ * 2c fix: added .order() before .range() — Postgres OFFSET pagination is
+ * undefined without ORDER BY. Pre-fix, the separate paginated queries returned
+ * an inconsistent row set (no stable sort across calls), so ~7% of city slugs
+ * were intermittently dropped from the dropdowns.
  */
 export async function getDirectoryRegions(): Promise<DirectoryRegion[]> {
   const supabase = await createServiceRoleClient();
 
-  // Page through with .range() in case of >1000 rows (Supabase default cap)
-  const all: Array<{ province: string; city: string; city_slug: string }> = [];
+  type Row = { province: string; city: string; city_slug: string };
+  const all: Row[] = [];
   const pageSize = 1000;
   let from = 0;
-  // hard cap at 50k rows to prevent runaway
   while (from < 50000) {
     const { data, error } = await supabase
       .from("mortgage_listings")
@@ -67,9 +69,11 @@ export async function getDirectoryRegions(): Promise<DirectoryRegion[]> {
       .not("province", "is", null)
       .not("city", "is", null)
       .not("city_slug", "is", null)
+      .order("province", { ascending: true })
+      .order("city_slug", { ascending: true })
       .range(from, from + pageSize - 1);
     if (error || !data || data.length === 0) break;
-    all.push(...(data as Array<{ province: string; city: string; city_slug: string }>));
+    all.push(...(data as Row[]));
     if (data.length < pageSize) break;
     from += pageSize;
   }
@@ -108,19 +112,14 @@ export async function getListingsCount(): Promise<number> {
 }
 
 export type FilterOpts = {
-  region?: string;   // province 2-letter code
+  region?: string;
   citySlug?: string;
-  specSlug?: string; // mortgage_specializations.slug
-  query?: string;    // name ilike
-  page?: number;     // 1-indexed
-  perPage?: number;  // default REGION_PAGE_SIZE
+  specSlug?: string;
+  query?: string;
+  page?: number;
+  perPage?: number;
 };
 
-/**
- * Look-ahead pagination per pagination.md canon: fetch perPage+1 rows via
- * .range(from, from+perPage) (inclusive), slice off the last if present,
- * derive hasMore from data.length > perPage. No count query needed.
- */
 export async function getFilteredListingsPaged(opts: FilterOpts = {}): Promise<{
   listings: DirectoryListing[];
   hasMore: boolean;
@@ -129,10 +128,8 @@ export async function getFilteredListingsPaged(opts: FilterOpts = {}): Promise<{
   const page = Math.max(1, opts.page ?? 1);
   const perPage = opts.perPage ?? REGION_PAGE_SIZE;
   const from = (page - 1) * perPage;
-  const to = from + perPage; // inclusive → fetches perPage+1 rows
+  const to = from + perPage;
 
-  // Specialization filter via two-step lookup. Embedded !inner filter would
-  // duplicate rows when a listing has multiple specs, breaking pagination math.
   let specFilterIds: string[] | null = null;
   if (opts.specSlug) {
     const { data: spec } = await supabase
