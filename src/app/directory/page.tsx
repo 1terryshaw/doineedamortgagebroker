@@ -9,21 +9,26 @@ import {
 import SearchBar from "@/components/SearchBar";
 import Pagination from "@/components/Pagination";
 import ListingCard from "@/components/ListingCard";
+import { JURISDICTION } from "@/lib/jurisdiction";
+import { SITE_URL } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
+// Country-aware via JURISDICTION (keyed on NEXT_PUBLIC_COUNTRY) + SITE_URL
+// (per-project domain). Keeps Canada wording on .ca, US wording on .com.
 const PAGE_TITLE = "Find a Mortgage Broker | Directory";
-const PAGE_DESC =
-  "Browse mortgage brokers by province and city across Canada. Compare ratings, reviews, and specializations.";
+const PAGE_DESC = `Browse and compare licensed mortgage brokers across ${JURISDICTION.countryName}. Filter by location and read ratings and reviews.`;
+const DIRECTORY_URL = `${SITE_URL}/directory`;
 
 export const metadata = {
   title: PAGE_TITLE,
   description: PAGE_DESC,
+  alternates: { canonical: DIRECTORY_URL },
   openGraph: {
     title: PAGE_TITLE,
     description: PAGE_DESC,
     type: "website",
-    url: "https://findmymortgagebroker.ca/directory",
+    url: DIRECTORY_URL,
   },
   twitter: {
     card: "summary_large_image",
@@ -104,7 +109,7 @@ export default async function DirectoryPage({
     "@type": "CollectionPage",
     name: "Mortgage Broker Directory",
     description: PAGE_DESC,
-    url: "https://findmymortgagebroker.ca/directory",
+    url: DIRECTORY_URL,
   };
 
   // Pagination needs string-only searchParams (no `page` key — Pagination owns it)
@@ -127,7 +132,7 @@ export default async function DirectoryPage({
         </h1>
         <p className="mt-2 text-gray-600">
           {totalCount !== null
-            ? `${totalCount.toLocaleString()} brokers across Canada`
+            ? `${totalCount.toLocaleString()} brokers across ${JURISDICTION.countryName}`
             : "Browse by location and specialization"}
         </p>
       </header>
