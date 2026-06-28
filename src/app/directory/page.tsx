@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { createServiceRoleClient } from "@/lib/supabase/server";
 import {
   getDirectoryRegions,
   getFilteredListingsPaged,
   getListingsCount,
+  getSpecializations,
+  specializationsEnabled,
 } from "@/lib/directory-hub";
 import SearchBar from "@/components/SearchBar";
 import Pagination from "@/components/Pagination";
@@ -39,15 +40,6 @@ type SP = {
   page?: string;
 };
 
-async function getSpecializations() {
-  const supabase = await createServiceRoleClient();
-  const { data } = await supabase
-    .from("mortgage_specializations")
-    .select("slug, name, icon")
-    .order("sort_order", { ascending: true });
-  return data ?? [];
-}
-
 export default async function DirectoryPage({
   searchParams,
 }: {
@@ -57,9 +49,9 @@ export default async function DirectoryPage({
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
   const isFiltered = !!(sp.region || sp.city || sp.type || sp.q);
 
-  const [regions, specializations, paged, totalCount] = await Promise.all([
+  const [regions, specsEnabled, paged, totalCount] = await Promise.all([
     getDirectoryRegions(),
-    getSpecializations(),
+    specializationsEnabled(),
     getFilteredListingsPaged({
       region: sp.region,
       citySlug: sp.city,
@@ -69,6 +61,10 @@ export default async function DirectoryPage({
     }),
     isFiltered ? Promise.resolve(null) : getListingsCount(),
   ]);
+
+  // Specialization filter is gated: hidden until the join table has tagged rows
+  // for this country (currently empty empire-wide → dead UI).
+  const specializations = specsEnabled ? await getSpecializations() : [];
 
   const { listings, hasMore } = paged;
 

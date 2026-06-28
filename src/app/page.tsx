@@ -1,26 +1,26 @@
 import Link from "next/link";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { SITE_NAME, SITE_URL } from "@/lib/constants";
 import { JURISDICTION } from "@/lib/jurisdiction";
-import { COUNTRY, PROVINCE_WHITELIST } from "@/lib/country";
-import type { Region, Specialization } from "@/types";
+import {
+  getDirectoryRegions,
+  getSpecializations,
+  specializationsEnabled,
+  type DirectoryRegion,
+} from "@/lib/directory-hub";
 import { WebSiteJsonLd, OrganizationJsonLd } from "@/components/JsonLd";
 
+export const dynamic = "force-dynamic";
+
 export default async function HomePage() {
-  const supabase = await createServerSupabaseClient();
+  // Listing-derived regions (full province + city coverage) — replaces the
+  // legacy mortgage_regions source, which only held ON (CA) / FL (US) and made
+  // the homepage look province-locked. /directory is the canonical search surface.
+  const regions = await getDirectoryRegions();
 
-  const [{ data: regions }, { data: specializations }] = await Promise.all([
-    supabase
-      .from("mortgage_regions")
-      .select("*")
-      .in("province", PROVINCE_WHITELIST[COUNTRY])
-      .order("name")
-      .limit(12),
-    supabase.from("mortgage_specializations").select("*").order("name"),
-  ]);
-
-  const cities = (regions as Region[] | null) ?? [];
-  const specs = (specializations as Specialization[] | null) ?? [];
+  // Specialization tiles are gated: mortgage_listing_specializations is empty,
+  // so the tiles would all be dead links. Only fetch + render when tagged.
+  const specsEnabled = await specializationsEnabled();
+  const specs = specsEnabled ? await getSpecializations() : [];
 
   return (
     <>
@@ -57,7 +57,7 @@ export default async function HomePage() {
               {JURISDICTION.heroSubcopy}
             </p>
 
-            <SearchBar cities={cities} />
+            <HeroSearchBar regions={regions} />
 
             <p className="mt-4 text-sm text-navy-400">
               {JURISDICTION.heroSourcedLine} &middot; Not financial advice
@@ -69,17 +69,17 @@ export default async function HomePage() {
       <section className="bg-white py-16 sm:py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="text-center">
-            <h2 className="section-heading">Browse by City</h2>
+            <h2 className="section-heading">Browse by Region</h2>
             <p className="section-subheading">
               Find mortgage brokers in your area
             </p>
           </div>
 
           <div className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-            {cities.map((city) => (
+            {regions.map((region) => (
               <Link
-                key={city.id}
-                href={`/${city.slug}`}
+                key={region.province}
+                href={`/directory?region=${region.province}`}
                 className="group flex flex-col items-center rounded-xl border border-navy-100 bg-white p-4 text-center transition-all hover:border-teal-200 hover:shadow-md sm:p-5"
               >
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-navy-50 transition-colors group-hover:bg-teal-50">
@@ -103,7 +103,7 @@ export default async function HomePage() {
                   </svg>
                 </div>
                 <span className="mt-3 text-sm font-semibold text-navy-800 group-hover:text-teal-700">
-                  {city.name}
+                  {region.name}
                 </span>
               </Link>
             ))}
@@ -111,10 +111,10 @@ export default async function HomePage() {
 
           <div className="mt-8 text-center">
             <Link
-              href="/search"
+              href="/directory"
               className="inline-flex items-center gap-1 text-sm font-medium text-teal-600 transition-colors hover:text-teal-700"
             >
-              View all cities
+              Browse the full directory
               <svg
                 className="h-4 w-4"
                 fill="none"
@@ -133,40 +133,37 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="bg-navy-50 py-16 sm:py-20">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="text-center">
-            <h2 className="section-heading">Browse by Specialization</h2>
-            <p className="section-subheading">
-              Find brokers who specialize in your mortgage needs
-            </p>
-          </div>
+      {specsEnabled && specs.length > 0 && (
+        <section className="bg-navy-50 py-16 sm:py-20">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="text-center">
+              <h2 className="section-heading">Browse by Specialization</h2>
+              <p className="section-subheading">
+                Find brokers who specialize in your mortgage needs
+              </p>
+            </div>
 
-          <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {specs.map((spec) => (
-              <Link
-                key={spec.id}
-                href={`/search?specialization=${spec.slug}`}
-                className="group flex items-start gap-4 rounded-xl border border-navy-100 bg-white p-5 transition-all hover:border-teal-200 hover:shadow-md"
-              >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-lg transition-colors group-hover:bg-teal-100">
-                  {spec.icon || getSpecIcon(spec.slug)}
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-navy-900 group-hover:text-teal-700">
-                    {spec.name}
-                  </h3>
-                  {spec.description && (
-                    <p className="mt-1 text-sm leading-relaxed text-navy-500">
-                      {spec.description}
-                    </p>
-                  )}
-                </div>
-              </Link>
-            ))}
+            <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {specs.map((spec) => (
+                <Link
+                  key={spec.slug}
+                  href={`/directory?type=${spec.slug}`}
+                  className="group flex items-start gap-4 rounded-xl border border-navy-100 bg-white p-5 transition-all hover:border-teal-200 hover:shadow-md"
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-lg transition-colors group-hover:bg-teal-100">
+                    {spec.icon || getSpecIcon(spec.slug)}
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-navy-900 group-hover:text-teal-700">
+                      {spec.name}
+                    </h3>
+                  </div>
+                </Link>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       <section className="bg-white py-16 sm:py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -182,8 +179,8 @@ export default async function HomePage() {
                 reviews, and grow your business.
               </p>
               <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                <Link href="/search" className="btn-primary px-8 py-3 text-base">
-                  Claim Your Listing
+                <Link href="/directory" className="btn-primary px-8 py-3 text-base">
+                  Browse the Directory
                 </Link>
                 <Link
                   href="/about"
@@ -213,10 +210,13 @@ export default async function HomePage() {
   );
 }
 
-function SearchBar({ cities }: { cities: Region[] }) {
+// Server-rendered hero search. Province dropdown is listing-derived (all
+// provinces with data); submits to /directory, the canonical search surface,
+// where the province→city cascade and name/specialization filters live.
+function HeroSearchBar({ regions }: { regions: DirectoryRegion[] }) {
   return (
     <form
-      action="/search"
+      action="/directory"
       method="get"
       className="mx-auto mt-8 flex max-w-2xl flex-col gap-3 sm:mt-10 sm:flex-row"
     >
@@ -243,17 +243,17 @@ function SearchBar({ cities }: { cities: Region[] }) {
       </div>
 
       <select
-        name="city"
+        name="region"
         defaultValue=""
+        aria-label="Region"
         className="rounded-lg border-0 bg-white py-3 pl-4 pr-8 text-sm text-navy-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-500 sm:w-44"
       >
-        <option value="">All Cities</option>
-        {cities.map((city) => (
-          <option key={city.id} value={city.slug}>
-            {city.name}
+        <option value="">All Regions</option>
+        {regions.map((region) => (
+          <option key={region.province} value={region.province}>
+            {region.name}
           </option>
         ))}
-        <option value="other">Other</option>
       </select>
 
       <button

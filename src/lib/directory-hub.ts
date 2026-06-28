@@ -111,6 +111,37 @@ export async function getListingsCount(): Promise<number> {
   return error || !count ? 0 : count;
 }
 
+export type SpecializationOption = {
+  slug: string;
+  name: string;
+  icon: string | null;
+};
+
+export async function getSpecializations(): Promise<SpecializationOption[]> {
+  const supabase = await createServiceRoleClient();
+  const { data } = await supabase
+    .from("mortgage_specializations")
+    .select("slug, name, icon")
+    .order("sort_order", { ascending: true });
+  return (data as SpecializationOption[] | null) ?? [];
+}
+
+/**
+ * Whether any listing IN THIS COUNTRY is tagged with a specialization.
+ * mortgage_listing_specializations is currently empty empire-wide, so the
+ * specialization tiles/filters are dead UI — gate them on this so they
+ * auto-reappear once the join table is populated for the country.
+ */
+export async function specializationsEnabled(): Promise<boolean> {
+  const supabase = await createServiceRoleClient();
+  const { data, error } = await supabase
+    .from("mortgage_listing_specializations")
+    .select("listing_id, mortgage_listings!inner(country)")
+    .eq("mortgage_listings.country", COUNTRY)
+    .limit(1);
+  return !error && !!data && data.length > 0;
+}
+
 export type FilterOpts = {
   region?: string;
   citySlug?: string;

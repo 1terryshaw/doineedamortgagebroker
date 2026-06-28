@@ -76,19 +76,21 @@ export default function SearchBar({ regions, specializations }: Props) {
         ))}
       </select>
 
-      <select
-        value={specSlug}
-        onChange={(e) => setSpecSlug(e.target.value)}
-        className="rounded-md border border-gray-300 px-3 py-2 text-sm"
-        aria-label="Specialization"
-      >
-        <option value="">All specializations</option>
-        {specializations.map((s) => (
-          <option key={s.slug} value={s.slug}>
-            {s.name}
-          </option>
-        ))}
-      </select>
+      {specializations.length > 0 && (
+        <select
+          value={specSlug}
+          onChange={(e) => setSpecSlug(e.target.value)}
+          className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+          aria-label="Specialization"
+        >
+          <option value="">All specializations</option>
+          {specializations.map((s) => (
+            <option key={s.slug} value={s.slug}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+      )}
 
       <input
         type="text"
