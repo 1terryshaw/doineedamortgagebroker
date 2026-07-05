@@ -74,6 +74,10 @@ interface LocalBusinessJsonLdProps {
   rating?: number;
   reviewCount?: number;
   images?: string[];
+  // Additive AI-enrichment signals (optional; gap-fill only, never override authoritative data).
+  knowsAbout?: string[];
+  availableLanguage?: string[];
+  areaServed?: string[];
 }
 
 export function LocalBusinessJsonLd({
@@ -89,6 +93,9 @@ export function LocalBusinessJsonLd({
   rating,
   reviewCount,
   images,
+  knowsAbout,
+  availableLanguage,
+  areaServed,
 }: LocalBusinessJsonLdProps) {
   const data: Record<string, unknown> = {
     "@context": "https://schema.org",
@@ -130,6 +137,18 @@ export function LocalBusinessJsonLd({
 
   if (images && images.length > 0) {
     data.image = images;
+  }
+
+  if (knowsAbout && knowsAbout.length > 0) {
+    data.knowsAbout = knowsAbout;
+  }
+
+  if (availableLanguage && availableLanguage.length > 0) {
+    data.availableLanguage = availableLanguage;
+  }
+
+  if (areaServed && areaServed.length > 0) {
+    data.areaServed = areaServed.map((c) => ({ "@type": "City", name: c }));
   }
 
   return (

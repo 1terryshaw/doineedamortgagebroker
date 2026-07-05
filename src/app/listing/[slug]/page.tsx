@@ -12,6 +12,8 @@ import { Listing } from "@/types";
 import InquiryForm from "@/components/InquiryForm";
 import { LocalBusinessJsonLd } from "@/components/JsonLd";
 import FAQSection from "@/components/FAQSection";
+import { getEnrichment } from "@/lib/knowledge";
+import EnrichmentBlock from "@/components/EnrichmentBlock";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -87,10 +89,26 @@ export default async function ListingPage({ params }: PageProps) {
     notFound();
   }
 
+  // Supplementary AI enrichment (fail-open: null on any error => page renders normally).
+  const enrichment = await getEnrichment("mortgage", listing.slug);
+
   const specializations =
     listing.mortgage_listing_specializations?.map(
       (ls) => ls.mortgage_specializations
     ) || [];
+
+  // Additive JSON-LD signals from enrichment (gap-fill only; authoritative data wins).
+  const enrichKnowsAbout = enrichment
+    ? Array.from(
+        new Set([
+          ...enrichment.knowledge.services,
+          ...enrichment.knowledge.specialties,
+          ...enrichment.knowledge.certifications,
+        ])
+      )
+        .filter((s) => s && s.trim())
+        .slice(0, 30)
+    : [];
 
   const stateLabel = listing.state_province || listing.province || "US";
 
@@ -178,7 +196,7 @@ export default async function ListingPage({ params }: PageProps) {
     <main className="min-h-screen bg-gray-50">
       <LocalBusinessJsonLd
         name={listing.name}
-        description={listing.bio || undefined}
+        description={listing.bio || enrichment?.knowledge.description || undefined}
         url={listingUrl}
         phone={listing.phone || undefined}
         address={listing.address || undefined}
@@ -189,6 +207,13 @@ export default async function ListingPage({ params }: PageProps) {
         rating={listing.google_rating || undefined}
         reviewCount={listing.google_review_count || undefined}
         images={images}
+        knowsAbout={enrichKnowsAbout}
+        availableLanguage={enrichment?.knowledge.languages}
+        areaServed={
+          !listing.city && !listing.province
+            ? enrichment?.knowledge.service_areas
+            : undefined
+        }
       />
 
       {/* Breadcrumb */}
@@ -387,6 +412,18 @@ export default async function ListingPage({ params }: PageProps) {
                     </span>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Additional Information — supplementary AI enrichment (distinct, attributed block) */}
+            {enrichment && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8">
+                <EnrichmentBlock
+                  enrichment={enrichment}
+                  listingHasDescription={Boolean(listing.bio)}
+                  listingHasServices={specializations.length > 0}
+                  listingHasServiceArea={Boolean(listing.city || listing.province)}
+                />
               </div>
             )}
 
