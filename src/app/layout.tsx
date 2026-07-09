@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { headers } from "next/headers";
 import "./globals.css";
 import { SITE_NAME, SITE_URL } from "@/lib/constants";
 import { JURISDICTION, HREFLANG_ALTERNATES } from "@/lib/jurisdiction";
@@ -42,11 +43,37 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // FCA NEUTRALIZATION: the /uk subtree must NOT render the US chrome (the amber
+  // <Disclaimer/> "not financial advice / state regulator records" banner, the US
+  // <Header/>, or the US <Footer/> whose verify line names NMLS Consumer Access). A
+  // nested layout cannot strip a parent layout's siblings, so the root detects /uk via
+  // the `x-uk-pathname` header set by src/middleware.ts and renders a bare shell —
+  // src/app/uk/layout.tsx then supplies the FCA-safe chrome. Fail OPEN to US chrome if
+  // the header is unreadable (never a UK page in that case, since /uk always transits
+  // the middleware that sets it).
+  let isUk = false;
+  try {
+    const ukPath = (await headers()).get("x-uk-pathname") ?? "";
+    isUk = ukPath === "/uk" || ukPath.startsWith("/uk/");
+  } catch {
+    isUk = false;
+  }
+
+  if (isUk) {
+    return (
+      <html lang="en-GB">
+        <body className="flex min-h-screen flex-col font-sans antialiased">
+          {children}
+        </body>
+      </html>
+    );
+  }
+
   return (
     <html lang="en">
       <body className="flex min-h-screen flex-col font-sans antialiased">
