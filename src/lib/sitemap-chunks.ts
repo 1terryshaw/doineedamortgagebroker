@@ -22,6 +22,105 @@ import { COUNTRY, PROVINCE_WHITELIST } from "@/lib/country";
 
 export const CHUNK_SIZE = 45_000; // headroom under the 50k protocol ceiling
 
+/**
+ * THE RULE (canon: ~/empire/knowledge/aeo-cohorts.md): lastmod tracks the RENDER,
+ * not the DB row. A page's <lastmod> may only move when its SERVED HTML moved.
+ *
+ * `mortgage_listings.updated_at` is NOT a content timestamp and must never be cited
+ * here. A live BEFORE UPDATE trigger (mortgage_listings_updated_at →
+ * update_mortgage_updated_at) sets updated_at = NOW() on ANY write to the row —
+ * including writes that change zero rendered bytes:
+ *   - outreach drip stamps (outreach_email1..4_at) — mortgage is an active outreach
+ *     vertical (scripts/empire-outreach.ts). Emailing a broker was bumping that
+ *     broker's <lastmod> to "today". Measured: 40 CA listings/day, every weekday.
+ *   - bulk maintenance writes — a single 2026-07-01 migration re-stamped 64,519/64,587
+ *     US and 6,154/6,434 CA rows to that instant.
+ * Net effect: ~100% of listing URLs were publishing a false "fresh today" lastmod
+ * while their actual content dated to Mar–Jun. That teaches Google to discount our
+ * lastmod wholesale. The trigger is load-bearing for other consumers and is NOT
+ * touched — the lie is corrected here, at the point of publication.
+ *
+ * CONTENT_COLS: the only row timestamps that provably move the served HTML of
+ * /listing/[slug] (verified against the fields the page actually renders):
+ *   created_at            — the row's content first existed (name/address/phone/bio/
+ *                           website/licence/languages/years_experience/photo/lat-lng)
+ *   google_data_cached_at — cached_photos + rating/review counts are rendered
+ *   owner_last_action_at  — owner edited their own listing
+ *   claimed_at            — flips the claim CTA / badge render
+ *   enrichment_at         — EnrichmentBlock renders enrichment
+ * DELIBERATELY EXCLUDED (write the row, render nothing): updated_at, outreach_email*_at,
+ * outreach_bounced/unsubscribed, email_harvested_at, email_invalid, last_verified_at,
+ * verification_status. Per THE RULE, a write that renders nowhere is not a content
+ * change and must not touch lastmod.
+ */
+const CONTENT_COLS = [
+  "created_at",
+  "google_data_cached_at",
+  "owner_last_action_at",
+  "claimed_at",
+  "enrichment_at",
+] as const;
+
+const LISTING_CONTENT_SELECT = `slug, ${CONTENT_COLS.join(", ")}`;
+
+type ContentRow = Partial<Record<(typeof CONTENT_COLS)[number], string | null>>;
+
+/** GREATEST(content-bearing timestamps) for one row — the row's true content date. */
+function contentLastmod(row: ContentRow, fallback: string): string {
+  let best = 0;
+  for (const col of CONTENT_COLS) {
+    const raw = row[col];
+    if (!raw) continue;
+    const t = new Date(raw).getTime();
+    if (Number.isFinite(t) && t > best) best = t;
+  }
+  return best > 0 ? new Date(best).toISOString() : fallback;
+}
+
+/**
+ * The newest content date anywhere in the served corpus, used as the lastmod for
+ * INDEX-shaped pages (home, /search, region hubs, region×spec) and the sitemapindex.
+ *
+ * Those pages previously stamped `new Date()` — a lastmod that varies on EVERY
+ * REQUEST, i.e. 43,660 US URLs claiming "changed this instant" on every fetch. That
+ * is a worse false-freshness defect than the listing one and is what this replaces.
+ *
+ * An index page over the corpus cannot be newer than the newest content in the
+ * corpus, so this is a real content date and is stable across requests. Known
+ * residual: it OVERSTATES a quiet region whose own newest listing is older than the
+ * corpus max. The strictly-true value is per-region MAX(contentLastmod), which needs
+ * a full 64k-row scan of mortgage_listings inside a force-dynamic route — this repo
+ * has a live 50k PostgREST-truncation history (TDL #957 silently dropped 14,587
+ * listings), so that scan is NOT being added in the same commit as the churn fix.
+ * Filed as the follow-up; a per-region aggregate view is the right shape.
+ *
+ * Cost: 5 single-row ordered reads (LIMIT 1), no truncation surface.
+ */
+async function getCorpusContentMax(fallback: string): Promise<string> {
+  const supabase = await createServiceRoleClient();
+  const results = await Promise.all(
+    CONTENT_COLS.map((col) =>
+      supabase
+        .from("mortgage_listings")
+        .select(col)
+        .eq("is_active", true)
+        .eq("country", COUNTRY)
+        .not(col, "is", null)
+        .order(col, { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ),
+  );
+  let best = 0;
+  for (let i = 0; i < results.length; i++) {
+    const raw = (results[i].data as ContentRow | null)?.[CONTENT_COLS[i]];
+    if (!raw) continue;
+    const t = new Date(raw).getTime();
+    if (Number.isFinite(t) && t > best) best = t;
+  }
+  return best > 0 ? new Date(best).toISOString() : fallback;
+}
+
 interface UrlEntry {
   loc: string;
   lastmod: string;
@@ -89,7 +188,8 @@ export async function getSegments(): Promise<Segments> {
 /** The <sitemapindex> body: one <sitemap> per child chunk. */
 export async function renderIndex(baseUrl: string): Promise<string> {
   const { totalChunks } = await getSegments();
-  const lastmod = new Date().toISOString();
+  // Was `new Date()` — a per-request-varying lastmod on every child sitemap.
+  const lastmod = await getCorpusContentMax(new Date().toISOString());
   const rows = Array.from(
     { length: totalChunks },
     (_, i) =>
@@ -108,6 +208,10 @@ export async function renderChunk(id: number): Promise<string> {
   const lo = id * CHUNK_SIZE;
   const hi = Math.min(lo + CHUNK_SIZE, T);
   const now = new Date().toISOString();
+  // Index-shaped pages (static/hubs/spec) cite the corpus's newest CONTENT date,
+  // never `now` — see getCorpusContentMax. `now` survives only as a last-resort
+  // fallback for a row with no content timestamp at all (none exist today).
+  const indexLastmod = await getCorpusContentMax(now);
   const out: string[] = [];
 
   if (id >= 0 && lo < T) {
@@ -126,7 +230,7 @@ export async function renderChunk(id: number): Promise<string> {
     if (lo < staticEnd) {
       const a = Math.max(lo, 0);
       const b = Math.min(hi, staticEnd);
-      for (const e of staticEntries(now).slice(a, b)) out.push(renderUrl(e));
+      for (const e of staticEntries(indexLastmod).slice(a, b)) out.push(renderUrl(e));
     }
 
     // --- REGION HUBS (ordered by slug) ---
@@ -140,7 +244,7 @@ export async function renderChunk(id: number): Promise<string> {
         .order("slug")
         .range(a, b - 1);
       for (const region of data ?? [])
-        out.push(renderUrl({ loc: `${SITE_URL}/${region.slug}`, lastmod: now, changefreq: "weekly", priority: "0.8" }));
+        out.push(renderUrl({ loc: `${SITE_URL}/${region.slug}`, lastmod: indexLastmod, changefreq: "weekly", priority: "0.8" }));
     }
 
     // --- REGION × SPEC (region-major, spec-minor; region.slug then spec.slug) ---
@@ -168,7 +272,7 @@ export async function renderChunk(id: number): Promise<string> {
           out.push(
             renderUrl({
               loc: `${SITE_URL}/${regionArr[ri].slug}/${specArr[pi].slug}`,
-              lastmod: now,
+              lastmod: indexLastmod,
               changefreq: "weekly",
               priority: "0.7",
             }),
@@ -181,18 +285,21 @@ export async function renderChunk(id: number): Promise<string> {
     if (lo < listEnd && hi > listStart) {
       const a = Math.max(lo, listStart) - listStart;
       const b = Math.min(hi, listEnd) - listStart;
+      // ORDER BY id + the same range() as before — partitioning and the URL set are
+      // untouched. ONLY the lastmod value changes: updated_at (outreach/bulk-write
+      // polluted) -> GREATEST(content-bearing cols). See THE RULE above.
       const { data } = await supabase
         .from("mortgage_listings")
-        .select("slug, updated_at")
+        .select(LISTING_CONTENT_SELECT)
         .eq("is_active", true)
         .eq("country", COUNTRY)
         .order("id")
         .range(a, b - 1);
-      for (const listing of data ?? [])
+      for (const listing of ((data ?? []) as unknown) as (ContentRow & { slug: string })[])
         out.push(
           renderUrl({
             loc: `${SITE_URL}/listing/${listing.slug}`,
-            lastmod: listing.updated_at ?? now,
+            lastmod: contentLastmod(listing, now),
             changefreq: "weekly",
             priority: "0.6",
           }),
