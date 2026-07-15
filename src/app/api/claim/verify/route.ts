@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin, LISTINGS_TABLE } from "@/lib/supabase-admin";
 import { setAuthCookie } from "@/lib/auth";
 import { SITE_URL } from "@/lib/constants";
+import { canRepublishOnClaim } from "@/lib/republish-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
 
   const { data: listing, error } = await supabaseAdmin
     .from(LISTINGS_TABLE)
-    .select("id, owner_auth_token, pending_description")
+    .select("id, owner_auth_token, pending_description, is_published, deserve_reason, name")
     .eq("slug", slug)
     .single();
 
@@ -37,6 +38,15 @@ export async function GET(request: NextRequest) {
   if (listing.pending_description) {
     // Mortgage's real long-description column is `bio`, not `description` (#604).
     update.bio = listing.pending_description;
+  }
+  // TDL #1068 — republish-on-claim. A verified claim is consent from the listing's
+  // subject, so a de-served SEEDED person-row republishes here. canRepublishOnClaim
+  // fails CLOSED: only NULL / person-consent-curable deserve_reasons publish;
+  // RESTRICTED-source and nameless rows stay down (consent ≠ SOURCE cure, #1014).
+  if (canRepublishOnClaim(listing)) {
+    update.is_published = true;
+    update.deserve_reason = null;
+    update.deserved_at = null;
   }
   await supabaseAdmin.from(LISTINGS_TABLE).update(update).eq("id", listing.id);
 
