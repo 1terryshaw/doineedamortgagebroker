@@ -36,6 +36,40 @@ async function getSpecialization(slug: string): Promise<Specialization | null> {
   return data as Specialization;
 }
 
+// Anon reads on mortgage_listings MUST project explicit columns — `select("*")`
+// fails with 42501 "permission denied for table mortgage_listings" (anon has
+// column-level SELECT on only 96 of 100 columns; anon-lockdown 012/013). Same
+// projection as the /listing/[slug] fix (TDL #1203, 51f808a). NOTE: this list
+// route also depends on mortgage_listing_specializations having rows — that
+// table is currently empty, so these pages render empty regardless of this fix
+// (a data gap, not the query bug); the projection removes the latent 42501 for
+// when spec links exist.
+const SPEC_LISTING_SELECT = `
+  id, name, slug, license_number, email, phone, website, address, city, province,
+  postal_code, latitude, longitude, region_id, city_slug, bio, photo_url, languages,
+  years_experience, google_rating, google_review_count, is_claimed, is_premium,
+  is_active, claimed_by, google_place_id, source, created_at, updated_at, owner_email,
+  short_description, claimed, siteforge_preview_url, siteforge_generation_id,
+  outreach_email4_at, now_hiring, subscription_tier, listing_type, claimed_at,
+  claim_verified, outreach_unsubscribed, featured, outreach_email1_at,
+  outreach_email2_at, outreach_email3_at, outreach_email1_variant, outreach_bounced,
+  last_verified_at, verification_status, verification_notes, cached_rating,
+  cached_review_count, cached_reviews, cached_photos, cached_hours,
+  google_data_cached_at, refresh_cadence_tier, country, email_harvest_attempted,
+  email_harvested_at, email_invalid, tier, enrichment_attempted, enrichment_at,
+  owner_last_action_at, enrichment_source, enriched_at, trade_category,
+  outreach_email1_synthetic, state_province, hero_image_url, trial_end,
+  province_state, audience_quality, pending_description, last_claim_pitch_at, lei,
+  hmda_orig_count, hmda_year, services, service_area, gbp_url, hours_json, owner_name,
+  is_published, nmls_id, source_grain, sponsor_nmls_id, sponsor_name, state_license_id,
+  rssd_id, outreach_email1_uncounted_send, deserve_candidate, deserve_reason,
+  deserved_at, invite_sent_at,
+  mortgage_listing_specializations(
+    specialization_id,
+    mortgage_specializations(*)
+  )
+`;
+
 async function getListingsBySpecAndCity(
   regionId: string,
   specId: string
@@ -54,15 +88,7 @@ async function getListingsBySpecAndCity(
 
   const { data } = await supabase
     .from("mortgage_listings")
-    .select(
-      `
-      *,
-      mortgage_listing_specializations(
-        specialization_id,
-        mortgage_specializations(*)
-      )
-    `
-    )
+    .select(SPEC_LISTING_SELECT)
     .in("id", listingIds)
     .eq("region_id", regionId)
     .eq("is_active", true)
@@ -71,7 +97,7 @@ async function getListingsBySpecAndCity(
     .order("google_rating", { ascending: false, nullsFirst: false })
     .limit(60);
 
-  return (data as Listing[] | null) ?? [];
+  return (data as unknown as Listing[] | null) ?? [];
 }
 
 export async function generateMetadata({

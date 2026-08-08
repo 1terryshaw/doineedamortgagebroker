@@ -26,19 +26,43 @@ async function getCity(slug: string): Promise<Region | null> {
   return data as Region;
 }
 
+// Anon reads on mortgage_listings MUST project explicit columns — `select("*")`
+// fails with 42501 "permission denied for table mortgage_listings" because anon
+// holds column-level SELECT on only 96 of 100 columns (the four anon-locked
+// token/precision columns are revoked; anon-lockdown 012/013). Under a list
+// query the error surfaces as an EMPTY directory (data => null => []), not a 404.
+// Same fix as the /listing/[slug] getListing() projection (TDL #1203, 51f808a).
+const CITY_LISTING_SELECT = `
+  id, name, slug, license_number, email, phone, website, address, city, province,
+  postal_code, latitude, longitude, region_id, city_slug, bio, photo_url, languages,
+  years_experience, google_rating, google_review_count, is_claimed, is_premium,
+  is_active, claimed_by, google_place_id, source, created_at, updated_at, owner_email,
+  short_description, claimed, siteforge_preview_url, siteforge_generation_id,
+  outreach_email4_at, now_hiring, subscription_tier, listing_type, claimed_at,
+  claim_verified, outreach_unsubscribed, featured, outreach_email1_at,
+  outreach_email2_at, outreach_email3_at, outreach_email1_variant, outreach_bounced,
+  last_verified_at, verification_status, verification_notes, cached_rating,
+  cached_review_count, cached_reviews, cached_photos, cached_hours,
+  google_data_cached_at, refresh_cadence_tier, country, email_harvest_attempted,
+  email_harvested_at, email_invalid, tier, enrichment_attempted, enrichment_at,
+  owner_last_action_at, enrichment_source, enriched_at, trade_category,
+  outreach_email1_synthetic, state_province, hero_image_url, trial_end,
+  province_state, audience_quality, pending_description, last_claim_pitch_at, lei,
+  hmda_orig_count, hmda_year, services, service_area, gbp_url, hours_json, owner_name,
+  is_published, nmls_id, source_grain, sponsor_nmls_id, sponsor_name, state_license_id,
+  rssd_id, outreach_email1_uncounted_send, deserve_candidate, deserve_reason,
+  deserved_at, invite_sent_at,
+  mortgage_listing_specializations(
+    specialization_id,
+    mortgage_specializations(*)
+  )
+`;
+
 async function getCityListings(regionId: string): Promise<Listing[]> {
   const supabase = await createServerSupabaseClient();
   const { data } = await supabase
     .from("mortgage_listings")
-    .select(
-      `
-      *,
-      mortgage_listing_specializations(
-        specialization_id,
-        mortgage_specializations(*)
-      )
-    `
-    )
+    .select(CITY_LISTING_SELECT)
     .eq("region_id", regionId)
     .eq("is_active", true)
     .eq("country", COUNTRY)
@@ -46,7 +70,7 @@ async function getCityListings(regionId: string): Promise<Listing[]> {
     .order("google_rating", { ascending: false, nullsFirst: false })
     .limit(60);
 
-  return (data as Listing[] | null) ?? [];
+  return (data as unknown as Listing[] | null) ?? [];
 }
 
 async function getSpecializations(): Promise<Specialization[]> {
