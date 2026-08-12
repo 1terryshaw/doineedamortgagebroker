@@ -53,6 +53,13 @@ export interface Listing {
   claimed: boolean;
   claimed_by: string | null;
   claimed_at: string | null;
+  // Selected by LISTING_SELECT and used for tier entitlements. Optional so existing
+  // constructions of Listing are unaffected. Resolve them with getEffectiveTier() —
+  // never `tier ?? subscription_tier`, which prefers the operational column and
+  // downgrades a paying listing.
+  tier?: string | null;
+  subscription_tier?: string | null;
+  is_claimed?: boolean | null;
   is_premium: boolean;
   premium_tier: string | null;
   premium_expires_at: string | null;

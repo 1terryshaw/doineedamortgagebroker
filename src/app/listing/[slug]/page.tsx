@@ -8,6 +8,7 @@ import { COUNTRY } from "@/lib/country";
 import { getPhotoUrls } from "@/lib/listing-media";
 import { listPhotosForListing } from "@/lib/listing-photos";
 import ListingGallery from "@/components/ListingGallery";
+import TierBadge from "@/components/TierBadge";
 import { Listing } from "@/types";
 import InquiryForm from "@/components/InquiryForm";
 import { LocalBusinessJsonLd } from "@/components/JsonLd";
@@ -303,9 +304,19 @@ export default async function ListingPage({ params }: PageProps) {
                     />
                   )}
                   <div className="flex-1 min-w-0">
-                    <h1 className="text-2xl sm:text-3xl font-bold text-[#1B2A4A]">
-                      {listing.name}
-                    </h1>
+                    <div className="flex items-start justify-between gap-2 flex-wrap">
+                      <h1 className="text-2xl sm:text-3xl font-bold text-[#1B2A4A]">
+                        {listing.name}
+                      </h1>
+                      {/* Tier badge — resolved via getEffectiveTier, never `tier ??
+                          subscription_tier`. Renders null for unclaimed/unpaid rows. */}
+                      <TierBadge
+                        tier={listing.tier}
+                        subscription_tier={listing.subscription_tier}
+                        is_claimed={listing.is_claimed ?? listing.claimed}
+                        google_rating={listing.google_rating}
+                      />
+                    </div>
                     {listing.city && (
                       <p className="text-gray-500 mt-1">
                         {listing.city}, {listing.province}
