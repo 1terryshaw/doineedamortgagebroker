@@ -234,6 +234,7 @@ export default async function ListingPage({ params }: PageProps) {
         address={listing.address || undefined}
         city={listing.city || undefined}
         province={listing.province}
+        country={listing.country || undefined}
         latitude={listing.latitude || undefined}
         longitude={listing.longitude || undefined}
         rating={listing.google_rating || undefined}

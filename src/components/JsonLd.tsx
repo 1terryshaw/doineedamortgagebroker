@@ -1,3 +1,5 @@
+import { COUNTRY } from "@/lib/country";
+
 const BASE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "https://doineedamortgagebroker.com";
 
@@ -69,6 +71,11 @@ interface LocalBusinessJsonLdProps {
   address?: string;
   city?: string;
   province?: string;
+  // ISO country code for the LISTING, derived from its `country` column by the caller.
+  // Was previously hardcoded "CA" below — on this US directory that emitted
+  // addressCountry:"CA" alongside a US addressRegion (e.g. "FL") on every listing page,
+  // i.e. structured data telling crawlers a Florida business is in Canada.
+  country?: string;
   latitude?: number;
   longitude?: number;
   rating?: number;
@@ -88,6 +95,7 @@ export function LocalBusinessJsonLd({
   address,
   city,
   province,
+  country,
   latitude,
   longitude,
   rating,
@@ -113,7 +121,7 @@ export function LocalBusinessJsonLd({
       ...(address && { streetAddress: address }),
       ...(city && { addressLocality: city }),
       ...(province && { addressRegion: province }),
-      addressCountry: "CA",
+      addressCountry: country || COUNTRY,
     };
   }
 

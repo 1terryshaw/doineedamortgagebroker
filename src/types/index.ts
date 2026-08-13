@@ -31,6 +31,9 @@ export interface Listing {
   city: string | null;
   province: string;
   state_province: string | null;
+  // ISO country code of the listing ("US" / "CA"). Already projected by LISTING_SELECT;
+  // the type just never declared it. Consumed by the LocalBusinessJsonLd addressCountry.
+  country: string | null;
   postal_code: string | null;
   latitude: number | null;
   longitude: number | null;
