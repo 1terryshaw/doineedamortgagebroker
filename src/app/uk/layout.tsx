@@ -50,9 +50,9 @@ export default function UkLayout({ children }: { children: React.ReactNode }) {
             >
               UK
             </span>
-            <span className="text-base font-bold text-gray-900">{UK_BRAND}</span>
+            <span className="text-sm font-bold text-gray-900 sm:text-base">{UK_BRAND}</span>
           </Link>
-          <nav className="flex items-center gap-5 text-sm">
+          <nav className="flex items-center gap-2 text-sm sm:gap-5">
             <Link href="/uk" className="text-gray-600 hover:text-gray-900">
               Find a Broker
             </Link>
