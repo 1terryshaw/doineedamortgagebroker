@@ -10,12 +10,33 @@ type Specialization = {
   icon?: string | null;
 };
 
+type UkCounty = {
+  slug: string;
+  name: string;
+  count: number;
+};
+
+type UkTown = {
+  countySlug: string;
+  slug: string;
+  name: string;
+};
+
 type Props = {
   regions: DirectoryRegion[];
   specializations: Specialization[];
+  ukCounties: UkCounty[];
+  ukTowns: UkTown[];
 };
 
-export default function SearchBar({ regions, specializations }: Props) {
+const UK_PREFIX = "uk:";
+
+export default function SearchBar({
+  regions,
+  specializations,
+  ukCounties,
+  ukTowns,
+}: Props) {
   const sp = useSearchParams();
   const router = useRouter();
 
@@ -24,11 +45,25 @@ export default function SearchBar({ regions, specializations }: Props) {
   const [specSlug, setSpecSlug] = useState(sp.get("type") ?? "");
   const [query, setQuery] = useState(sp.get("q") ?? "");
 
+  const selectedUkCounty = region.startsWith(UK_PREFIX)
+    ? region.slice(UK_PREFIX.length)
+    : null;
   const selectedRegion = regions.find((r) => r.province === region);
-  const cities = selectedRegion?.cities ?? [];
+  const cities = selectedUkCounty
+    ? ukTowns
+        .filter((town) => town.countySlug === selectedUkCounty)
+        .map((town) => ({ city: town.name, city_slug: town.slug, count: 0 }))
+    : (selectedRegion?.cities ?? []);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (region.startsWith(UK_PREFIX)) {
+      const countySlug = region.slice(UK_PREFIX.length);
+      router.push(
+        citySlug ? `/uk/${countySlug}/${citySlug}` : `/uk/${countySlug}`
+      );
+      return;
+    }
     const params = new URLSearchParams();
     if (region) params.set("region", region);
     if (citySlug) params.set("city", citySlug);
@@ -59,6 +94,15 @@ export default function SearchBar({ regions, specializations }: Props) {
             {r.name}
           </option>
         ))}
+        {ukCounties.length > 0 && (
+          <optgroup label="United Kingdom">
+            {ukCounties.map((county) => (
+              <option key={county.slug} value={`${UK_PREFIX}${county.slug}`}>
+                {county.name} ({county.count})
+              </option>
+            ))}
+          </optgroup>
+        )}
       </select>
 
       <select

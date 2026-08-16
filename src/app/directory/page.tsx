@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import {
   getDirectoryRegions,
   getFilteredListingsPaged,
@@ -11,6 +12,7 @@ import Pagination from "@/components/Pagination";
 import ListingCard from "@/components/ListingCard";
 import { JURISDICTION } from "@/lib/jurisdiction";
 import { SITE_URL } from "@/lib/constants";
+import { getUkAllTownHubs, getUkCounties } from "@/lib/uk-mortgage";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +39,18 @@ export const metadata = {
   },
 };
 
+function hostAllowsUkDiscovery(hostHeader: string | null): boolean {
+  const host = (hostHeader || "").split(":")[0].toLowerCase();
+  if (!host) return false;
+  if (host === "doineedamortgagebroker.com") return true;
+  if (host.endsWith(".doineedamortgagebroker.com")) return true;
+  if (host.includes("doineedamortgagebroker") && host.endsWith(".vercel.app")) {
+    return true;
+  }
+  if (host === "localhost" || host === "127.0.0.1") return true;
+  return false;
+}
+
 type SP = {
   region?: string;
   city?: string;
@@ -51,10 +65,11 @@ export default async function DirectoryPage({
   searchParams: Promise<SP>;
 }) {
   const sp = await searchParams;
+  const allowUkDiscovery = hostAllowsUkDiscovery((await headers()).get("host"));
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
   const isFiltered = !!(sp.region || sp.city || sp.type || sp.q);
 
-  const [regions, specsEnabled, paged, totalCount] = await Promise.all([
+  const [regions, specsEnabled, paged, totalCount, ukResults] = await Promise.all([
     getDirectoryRegions(),
     specializationsEnabled(),
     getFilteredListingsPaged({
@@ -65,7 +80,23 @@ export default async function DirectoryPage({
       page,
     }),
     isFiltered ? Promise.resolve(null) : getListingsCount(),
+    allowUkDiscovery
+      ? Promise.allSettled([getUkCounties(), getUkAllTownHubs()])
+      : Promise.resolve(null),
   ]);
+
+  const countyStats = ukResults?.[0]?.status === "fulfilled" ? ukResults[0].value : [];
+  const townStats = ukResults?.[1]?.status === "fulfilled" ? ukResults[1].value : [];
+  const ukCounties = countyStats.map((county) => ({
+    slug: county.county_slug,
+    name: county.county,
+    count: county.firm_count,
+  }));
+  const ukTowns = townStats.map((town) => ({
+    countySlug: town.county_slug,
+    slug: town.town_slug,
+    name: town.town,
+  }));
 
   // Specialization filter is gated: hidden until the join table has tagged rows
   // for this country (currently empty empire-wide → dead UI).
@@ -137,7 +168,12 @@ export default async function DirectoryPage({
         </p>
       </header>
 
-      <SearchBar regions={regions} specializations={specializations} />
+      <SearchBar
+        regions={regions}
+        specializations={specializations}
+        ukCounties={ukCounties}
+        ukTowns={ukTowns}
+      />
 
       {chips.length > 0 && (
         <div className="mt-4 flex flex-wrap gap-2">
