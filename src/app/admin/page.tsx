@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { SITE_NAME } from "@/lib/constants";
 import AdminClient from "@/components/AdminClient";
+import type { Listing } from "@/types";
 
 export const metadata = {
   title: `Admin Dashboard | ${SITE_NAME}`,
@@ -94,7 +95,11 @@ export default async function AdminPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <AdminClient
           stats={stats}
-          listings={listings ?? []}
+          // Cast through `unknown`: ADMIN_LISTING_COLS is a strict SUBSET of the
+          // Listing interface. select("*") inferred `any` and type-checked
+          // trivially; a named projection infers a precise row type that does not
+          // satisfy Listing. AdminClient only reads id/name/city/claimed.
+          listings={(listings as unknown as Listing[]) ?? []}
           inquiries={inquiries ?? []}
         />
       </div>

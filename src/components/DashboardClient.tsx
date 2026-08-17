@@ -130,7 +130,10 @@ export default function DashboardClient({
         .limit(10);
 
       if (error) throw error;
-      setSearchResults(data ?? []);
+      // Cast through `unknown`: the projection above is a strict SUBSET of Listing.
+      // select("*") inferred `any`; a named projection infers a precise 5-field row.
+      // The results list only reads id/name/city/province.
+      setSearchResults((data as unknown as Listing[]) ?? []);
     } catch {
       setSaveMessage("Error searching listings. Please try again.");
     } finally {
