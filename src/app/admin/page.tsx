@@ -8,6 +8,25 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
+// 🔴 EXPLICIT PROJECTION — NEVER `select("*")` ON `mortgage_listings` HERE.
+//
+// createServerSupabaseClient() is the ANON key plus the caller's cookie session,
+// so these queries execute as role `authenticated` for a signed-in admin — NOT as
+// service_role. `authenticated` holds column-level SELECT on a subset of
+// mortgage_listings (the token columns are revoked), and under a column-scoped
+// grant PostgREST answers `select=*` with 42501. Verified by rehearsal: both
+// `SELECT *` AND `count(*)` over a `select("*")` subquery raise
+// "permission denied for table mortgage_listings" — which is why the head:true
+// counts below project `id` rather than `*`. The failure mode is a silently EMPTY
+// admin dashboard, not an error page (TDL #1203).
+//
+// Token/secret columns are excluded by omission (default-deny):
+// owner_auth_token, outreach_unsub_token, owner_auth_token_expires_at.
+// NOTE: `status` and `state` are NOT columns on this table — do not add them.
+const ADMIN_LISTING_COLS =
+  "id, name, slug, city, province, email, phone, website, claimed, claimed_by, " +
+  "is_active, is_premium, listing_type, subscription_tier, region_id, created_at";
+
 export default async function AdminPage() {
   const supabase = await createServerSupabaseClient();
 
@@ -28,24 +47,24 @@ export default async function AdminPage() {
   ] = await Promise.all([
     supabase
       .from("mortgage_listings")
-      .select("*", { count: "exact", head: true }),
+      .select("id", { count: "exact", head: true }),
     supabase
       .from("mortgage_listings")
-      .select("*", { count: "exact", head: true })
+      .select("id", { count: "exact", head: true })
       .eq("claimed", true),
     supabase
       .from("mortgage_inquiries")
       .select("*", { count: "exact", head: true }),
     supabase
       .from("mortgage_listings")
-      .select("*", { count: "exact", head: true })
+      .select("id", { count: "exact", head: true })
       .eq("is_premium", true),
   ]);
 
   // Fetch all listings with region
   const { data: listings } = await supabase
     .from("mortgage_listings")
-    .select("*, region:mortgage_regions(*)")
+    .select(`${ADMIN_LISTING_COLS}, region:mortgage_regions(*)`)
     .order("created_at", { ascending: false });
 
   // Fetch recent inquiries

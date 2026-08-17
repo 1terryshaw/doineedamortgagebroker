@@ -115,7 +115,16 @@ export default function DashboardClient({
       const supabase = createClient();
       const { data, error } = await supabase
         .from("mortgage_listings")
-        .select("*")
+        // 🔴 EXPLICIT PROJECTION — this runs in the BROWSER on the anon key plus the
+        // signed-in user's session, i.e. as role `authenticated`. `select("*")` here
+        // did two bad things: it shipped whole listing rows (including
+        // owner_auth_token and outreach_unsub_token) to any logged-in user's browser
+        // for up to 10 unclaimed listings per search, and once those columns are
+        // revoked it raises 42501 and the claim search silently returns nothing.
+        // These are exactly the fields the results list renders, plus the filter key.
+        // (`state` is NOT a column on this table — the render's listing.state has
+        // always been undefined. Do not add it: PostgREST 400s on unknown columns.)
+        .select("id, name, city, province, claimed_by")
         .is("claimed_by", null)
         .ilike("name", `%${searchQuery}%`)
         .limit(10);
