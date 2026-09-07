@@ -257,6 +257,27 @@ function Footer() {
           </div>
         </div>
 
+        {/*
+          Related Directories (insurance-us-city-hubs-seo-v1). Reciprocal link —
+          doineedaninsurancebroker.com now carries "Find a Mortgage Broker" pointing
+          back here. US-ONLY on purpose: this repo renders BOTH the .com (COUNTRY=US)
+          and findmymortgagebroker.ca (COUNTRY=CA) from one codebase, and the mission
+          scope is US, so the CA surface stays byte-identical.
+        */}
+        {JURISDICTION.country === "US" && (
+          <div className="mt-10 border-t border-navy-800 pt-6 text-center text-sm">
+            <span className="text-navy-400">Related directories: </span>
+            <a
+              href="https://www.doineedaninsurancebroker.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="footer-link"
+            >
+              Find an Insurance Broker
+            </a>
+          </div>
+        )}
+
         <div className="mt-10 border-t border-navy-800 pt-6 text-center text-sm text-navy-500">
           <p>
             &copy; {new Date().getFullYear()} {SITE_NAME}. All rights reserved.
