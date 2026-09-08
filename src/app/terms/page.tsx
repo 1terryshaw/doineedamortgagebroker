@@ -1,10 +1,23 @@
 import type { Metadata } from "next";
 import { SITE_NAME } from "@/lib/constants";
-import { JURISDICTION } from "@/lib/jurisdiction";
+import { JURISDICTION, HREFLANG_ALTERNATES } from "@/lib/jurisdiction";
 
 export const metadata: Metadata = {
   title: `Terms of Service | ${SITE_NAME}`,
   description: `Terms of Service for ${SITE_NAME} — ${JURISDICTION.directoryScope} mortgage broker directory.`,
+  // Self-canonical (static-canonical-fan-v1, donor stamper-donor-v16.9). This page
+  // inherited the ROOT LAYOUT's `alternates.canonical: SITE_URL` — an affirmative
+  // instruction to treat it as a duplicate of the homepage. Repointed to itself.
+  // Relative, resolved by src/app/layout.tsx metadataBase (lib/constants SITE_URL),
+  // so each of the two Vercel projects on this repo self-points at its own origin.
+  // `languages` is re-derived per PATH: overriding `alternates` replaces the layout's
+  // object wholesale, so the hreflang pair must be restated here or it is dropped.
+  alternates: {
+    canonical: "/terms",
+    languages: Object.fromEntries(
+      Object.entries(HREFLANG_ALTERNATES).map(([lang, origin]) => [lang, `${origin}/terms`])
+    ),
+  },
 };
 
 export default function TermsPage() {
