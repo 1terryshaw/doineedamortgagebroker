@@ -21,11 +21,18 @@ export async function GET(request: NextRequest) {
 
   const { data: listing, error } = await supabaseAdmin
     .from(LISTINGS_TABLE)
-    .select("id, owner_auth_token, pending_description, is_published, deserve_reason, name")
+    .select("id, owner_auth_token, pending_description, is_published, deserve_reason, name, owner_auth_token_expires_at")
     .eq("slug", slug)
     .single();
 
   if (error || !listing || listing.owner_auth_token !== token) {
+    return NextResponse.redirect(`${SITE_URL}/claim/error`);
+  }
+
+  // Token expiry — enforced ONLY when set. Self-serve submissions stamp a 24h
+  // owner_auth_token_expires_at; seeded/organic claim tokens leave it NULL and never expire,
+  // so this cannot regress the pre-existing claim path. (claim-token-expiry-and-remint-v2)
+  if (listing.owner_auth_token_expires_at && new Date(listing.owner_auth_token_expires_at).getTime() < Date.now()) {
     return NextResponse.redirect(`${SITE_URL}/claim/error`);
   }
 

@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
     }
 
     const update: Record<string, unknown> = {
-      owner_auth_token: token,
+      owner_auth_token: token, owner_auth_token_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       owner_email: email,
       owner_name: name,
     };
