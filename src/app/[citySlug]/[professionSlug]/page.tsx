@@ -93,6 +93,8 @@ async function getListingsBySpecAndCity(
     .eq("region_id", regionId)
     .eq("is_active", true)
     .eq("country", COUNTRY)
+    // De-serve read guard — see the city hub. Same reason, same scope.
+    .neq("is_published", false)
     .order("is_premium", { ascending: false })
     .order("google_rating", { ascending: false, nullsFirst: false })
     .limit(60);

@@ -64,6 +64,15 @@ async function getListing(slug: string): Promise<Listing | null> {
     .eq("slug", slug)
     .eq("is_active", true)
     .eq("country", COUNTRY)
+    // DE-SERVE READ GUARD (#1010 / #1014 class; recon-v1 §A4). Without this predicate the
+    // 548 de-served US rows rendered at HTTP 200 with the person's name in <title>, in the
+    // sitemap, with no noindex — the column said de-served and the page said otherwise.
+    // `mortgage_listings.is_published` has no NULLs (US 64,039 t / 548 f; CA 6,432 t / 2 f),
+    // so `.neq(false)` is exact here; it is also the fleet-canonical spelling.
+    // This is the FAIL-CLOSED half of the pair: middleware's deserveGate() turns the
+    // resulting 404 into a 410 + claim link, and if the gate ever fails open the row STILL
+    // does not render, because of this line.
+    .neq("is_published", false)
     .single();
 
   if (error || !data) return null;

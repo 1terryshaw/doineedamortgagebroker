@@ -1,6 +1,6 @@
-// Two concerns, in this order: AEO crawler logging (TDL #684 AEO v2) and the
-// pre-existing UK host-gate + chrome signal. They are independent; the logging is
-// fire-and-forget and can never change a response.
+// Three concerns, in this order: AEO crawler logging (TDL #684 AEO v2), the de-serve
+// 410 gate (K101/K148), and the pre-existing UK host-gate + chrome signal. They are
+// independent; the logging is fire-and-forget and can never change a response.
 //
 // ── 1. AEO v2 — AI bot crawler tracking ────────────────────────────────────────
 // Detects AEO / AI-assistant crawlers by User-Agent and fire-and-forget logs the
@@ -47,6 +47,7 @@
 //       of the CA brand. Hence UK_SCOPE below; non-/uk requests are untouched.
 
 import { NextRequest, NextResponse, NextFetchEvent } from "next/server";
+import { deserveGate } from "@/lib/deserve-gate";
 
 // Canonical UA token → canonical bot_name. Order: most specific first.
 // Case-insensitive. MUST stay in sync with the SQL allow-list.
@@ -119,7 +120,10 @@ function hostAllowed(hostHeader: string | null): boolean {
   return false; // everything else — findmymortgagebroker.ca AND findyourmortgagebroker.vercel.app — is blocked
 }
 
-export function middleware(req: NextRequest, event: NextFetchEvent) {
+// async because concern 2 awaits a single boolean RPC — and ONLY on /listing/<slug>.
+// deserveGate() runs its path regex first and returns null before any network for every
+// other path, so no other route pays for it.
+export async function middleware(req: NextRequest, event: NextFetchEvent) {
   const { pathname } = req.nextUrl;
 
   // ── 1. AEO logging. Fire-and-forget; cannot alter the response. Skipped for the
@@ -160,7 +164,16 @@ export function middleware(req: NextRequest, event: NextFetchEvent) {
     }
   }
 
-  // ── 2. UK host-gate + chrome signal. Scoped to the /uk universe; every other
+  // ── 2. DE-SERVE 410 GATE (K101 / K148). Scoped to /listing/<slug> by the module's own
+  // regex; returns null (fall through) for every other path and on ANY error, so it can
+  // only ever UPGRADE a would-be 404 into a true 410 + noindex + claim link. It never
+  // selects the row — the RPC returns a bare boolean — so it cannot leak a withdrawn name.
+  // Placed BEFORE the UK block: /listing is not in UK_SCOPE, so the UK early-return would
+  // otherwise send every /listing request straight past the gate.
+  const gone = await deserveGate(req);
+  if (gone) return gone;
+
+  // ── 3. UK host-gate + chrome signal. Scoped to the /uk universe; every other
   // path falls straight through, so the CA brand is untouched.
   if (!UK_SCOPE.test(pathname)) {
     return NextResponse.next();

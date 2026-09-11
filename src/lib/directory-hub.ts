@@ -66,6 +66,9 @@ export async function getDirectoryRegions(): Promise<DirectoryRegion[]> {
       .select("province, city, city_slug")
       .eq("country", COUNTRY)
       .eq("is_active", true)
+      // De-serve read guard. A city whose only rows are de-served must stop appearing as
+      // a facet — and the facet COUNT must be the count the link actually opens.
+      .neq("is_published", false)
       .not("province", "is", null)
       .not("city", "is", null)
       .not("city_slug", "is", null)
@@ -107,7 +110,9 @@ export async function getListingsCount(): Promise<number> {
     .from("mortgage_listings")
     .select("*", { count: "exact", head: true })
     .eq("country", COUNTRY)
-    .eq("is_active", true);
+    .eq("is_active", true)
+    // De-serve read guard — the sitewide "N brokers" headline must count what we serve.
+    .neq("is_published", false);
   return error || !count ? 0 : count;
 }
 
@@ -190,7 +195,9 @@ export async function getFilteredListingsPaged(opts: FilterOpts = {}): Promise<{
        )`
     )
     .eq("country", COUNTRY)
-    .eq("is_active", true);
+    .eq("is_active", true)
+    // De-serve read guard — /directory + /search results.
+    .neq("is_published", false);
 
   if (opts.region) q = q.eq("province", opts.region);
   if (opts.citySlug) q = q.eq("city_slug", opts.citySlug);

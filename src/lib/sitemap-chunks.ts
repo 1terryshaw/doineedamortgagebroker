@@ -105,6 +105,8 @@ async function getCorpusContentMax(fallback: string): Promise<string> {
         .select(col)
         .eq("is_active", true)
         .eq("country", COUNTRY)
+        // De-serve read guard — see the note on getSegments(). Identical predicate.
+        .neq("is_published", false)
         .not(col, "is", null)
         .order(col, { ascending: false })
         .limit(1)
@@ -173,7 +175,16 @@ export async function getSegments(): Promise<Segments> {
       .from("mortgage_listings")
       .select("slug", { count: "exact", head: true })
       .eq("is_active", true)
-      .eq("country", COUNTRY),
+      .eq("country", COUNTRY)
+      // DE-SERVE READ GUARD — the sitemap must not advertise a withdrawn URL (recon-v1
+      // §A4: 548/548 de-served slugs were present across the three shards).
+      //
+      // ⚠ THE PREDICATE MUST BE IDENTICAL IN ALL THREE LISTING READS IN THIS FILE
+      // (this count, getCorpusContentMax, and renderChunk's range read). Sharding is
+      // deterministic offset-ranging over a COUNT taken here and a range() taken there —
+      // if the two disagree by even one row the partition slips and shards silently drop
+      // or duplicate URLs. Change one, change all three.
+      .neq("is_published", false),
   ]);
   const S = staticEntries("").length;
   const R = rRes.count ?? 0;
@@ -293,6 +304,8 @@ export async function renderChunk(id: number): Promise<string> {
         .select(LISTING_CONTENT_SELECT)
         .eq("is_active", true)
         .eq("country", COUNTRY)
+        // De-serve read guard — IDENTICAL to getSegments()'s count. See the warning there.
+        .neq("is_published", false)
         .order("id")
         .range(a, b - 1);
       for (const listing of ((data ?? []) as unknown) as (ContentRow & { slug: string })[])

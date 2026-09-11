@@ -66,6 +66,9 @@ async function getCityListings(regionId: string): Promise<Listing[]> {
     .eq("region_id", regionId)
     .eq("is_active", true)
     .eq("country", COUNTRY)
+    // De-serve read guard — a hub must not name a withdrawn person in its card grid.
+    // Scoped to the query, not the route: the hub keeps rendering its other listings.
+    .neq("is_published", false)
     .order("is_premium", { ascending: false })
     .order("google_rating", { ascending: false, nullsFirst: false })
     .limit(60);
