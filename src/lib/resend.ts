@@ -40,13 +40,16 @@ export async function sendMagicLink(
   }
 }
 
-/** Claim-verification email → /api/claim/verify?token=&slug= (both params required). */
+/** Claim-verification email → /claim/verify?token=&slug= (both params required). */
 export async function sendClaimEmail(
   email: string,
   slug: string,
   claimToken: string
 ): Promise<AuthSendResult> {
-  const verifyLink = `${SITE_URL}/api/claim/verify?token=${claimToken}&slug=${slug}`;
+  // Mail the INTERSTITIAL, not the writer. /api/claim/verify is POST-only for the write
+  // (ruling R2, fan 2026-09-11) — a mail scanner prefetching this link now lands on a
+  // confirmation page and changes nothing. See src/app/api/claim/verify/route.ts for why.
+  const verifyLink = `${SITE_URL}/claim/verify?token=${claimToken}&slug=${slug}`;
   try {
     const resend = new Resend(process.env.RESEND_API_KEY);
     const { data, error } = await resend.emails.send({
