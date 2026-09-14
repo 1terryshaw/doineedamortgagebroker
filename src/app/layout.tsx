@@ -90,7 +90,7 @@ function Header() {
   return (
     <header className="sticky top-0 z-50 border-b border-navy-800 bg-navy-900/95 backdrop-blur supports-[backdrop-filter]:bg-navy-900/80">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        <Link href="/" className="flex items-center gap-2">
+        <Link href="/" className="flex items-center gap-2 max-md:min-h-11 max-md:min-w-11">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-500">
             <svg
               className="h-5 w-5 text-white"
@@ -121,6 +121,9 @@ function Header() {
           <Link href="/owner/login" className="nav-link">
             Owner Login
           </Link>
+          <Link href="/claim" className="nav-link">
+            Claim Listing
+          </Link>
           <Link href="/owner/login" className="btn-primary text-sm">
             Login
           </Link>
@@ -136,8 +139,14 @@ function MobileMenuButton() {
   return (
     <div className="md:hidden">
       <Link
+        href="/claim"
+        className="mr-3 inline-flex min-h-11 items-center text-xs font-medium text-navy-200 hover:text-white"
+      >
+        Claim
+      </Link>
+      <Link
         href="/search"
-        className="mr-3 inline-flex items-center justify-center rounded-lg p-2 text-navy-200 hover:text-white"
+        className="mr-3 inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg p-2 text-navy-200 hover:text-white"
         aria-label="Search"
       >
         <svg
@@ -154,7 +163,7 @@ function MobileMenuButton() {
           />
         </svg>
       </Link>
-      <Link href="/owner/login" className="btn-primary px-3 py-1.5 text-xs">
+      <Link href="/owner/login" className="btn-primary min-h-11 px-3 py-1.5 text-xs">
         Login
       </Link>
     </div>
