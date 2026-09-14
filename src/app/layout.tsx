@@ -140,7 +140,7 @@ function MobileMenuButton() {
     <div className="md:hidden">
       <Link
         href="/claim"
-        className="mr-3 inline-flex min-h-11 items-center text-xs font-medium text-navy-200 hover:text-white"
+        className="mr-3 inline-flex min-h-11 min-w-11 items-center justify-center text-xs font-medium text-navy-200 hover:text-white"
       >
         Claim
       </Link>
