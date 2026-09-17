@@ -160,17 +160,56 @@ export interface Segments {
   totalChunks: number;
 }
 
+/**
+ * Spec slugs that have at least one listing link behind them, ordered by slug.
+ *
+ * TDL #1241. `mortgage_listing_specializations` is currently EMPTY, so every
+ * /{region}/{spec} hub renders zero listings; that route now calls notFound() rather
+ * than serving a thin HTTP 200 (Site Surfer 2026-09-16 EMPTY-HUB-200). The sitemap has
+ * to agree with the route, so the region x spec segment is derived from the specs the
+ * hubs can actually render, not from the static 9-row mortgage_specializations table.
+ * Today this returns [] -> P = 0 -> RS = 0 -> no spec URLs are emitted at all.
+ *
+ * RESIDUAL GAP (documented, not fixed here): occupancy is GLOBAL, not per region. Once
+ * spec links exist, RS is still R x P, so a (region, spec) pair with no listings in
+ * THAT region would be advertised and would 404. Closing that needs the segment to
+ * enumerate real pairs, which breaks the offset-range sharding this file depends on
+ * (RS = R * P). Revisit when spec links are first loaded.
+ *
+ * The link table is read in full to distinct its specialization_ids; it holds 0 rows
+ * today and is expected to stay small relative to the listing corpus.
+ */
+export async function getOccupiedSpecSlugs(): Promise<string[]> {
+  const supabase = await createServiceRoleClient();
+  const { data: links } = await supabase
+    .from("mortgage_listing_specializations")
+    .select("specialization_id");
+  const ids = Array.from(
+    new Set(((links ?? []) as { specialization_id: string }[]).map((l) => l.specialization_id)),
+  );
+  if (ids.length === 0) return [];
+  const { data: specs } = await supabase
+    .from("mortgage_specializations")
+    .select("slug")
+    .in("id", ids)
+    .order("slug");
+  return ((specs ?? []) as { slug: string }[]).map((sp) => sp.slug);
+}
+
 /** Count each segment (head-only count queries) and derive the chunk count. */
 export async function getSegments(): Promise<Segments> {
   const supabase = await createServiceRoleClient();
-  const [rRes, pRes, lRes] = await Promise.all([
+  const [rRes, occupiedSpecs, lRes] = await Promise.all([
     supabase
       .from("mortgage_regions")
       .select("slug", { count: "exact", head: true })
       .in("province", PROVINCE_WHITELIST[COUNTRY]),
-    supabase
-      .from("mortgage_specializations")
-      .select("slug", { count: "exact", head: true }),
+    // OCCUPIED specs only — see getOccupiedSpecSlugs(). A spec with no listing links
+    // behind it produces /{region}/{spec} hubs that render zero listings, and those
+    // hubs now 404 (TDL #1241 empty-hub gate). Routes and the sitemap are two
+    // expressions of ONE gate: counting all 9 specs here while the route 404s them
+    // would advertise R x 9 dead URLs.
+    getOccupiedSpecSlugs(),
     supabase
       .from("mortgage_listings")
       .select("slug", { count: "exact", head: true })
@@ -188,7 +227,7 @@ export async function getSegments(): Promise<Segments> {
   ]);
   const S = staticEntries("").length;
   const R = rRes.count ?? 0;
-  const P = pRes.count ?? 0;
+  const P = occupiedSpecs.length;
   const RS = R * P;
   const L = lRes.count ?? 0;
   const T = S + R + RS + L;
@@ -264,8 +303,9 @@ export async function renderChunk(id: number): Promise<string> {
       const b = Math.min(hi, specEnd) - specStart;
       const rStart = Math.floor(a / P);
       const rEnd = Math.floor((b - 1) / P); // inclusive region index
-      const [{ data: specs }, { data: regions }] = await Promise.all([
-        supabase.from("mortgage_specializations").select("slug").order("slug"),
+      const [specSlugs, { data: regions }] = await Promise.all([
+        // The SAME derivation getSegments() counted P from — see getOccupiedSpecSlugs().
+        getOccupiedSpecSlugs(),
         supabase
           .from("mortgage_regions")
           .select("slug")
@@ -273,21 +313,28 @@ export async function renderChunk(id: number): Promise<string> {
           .order("slug")
           .range(rStart, rEnd),
       ]);
-      const specArr = specs ?? [];
+      const specArr = specSlugs;
       const regionArr = regions ?? [];
+      // Fail CLOSED on a count/list disagreement: the shard bounds were computed from
+      // getSegments()'s P, and indexing into a different-length list slips the
+      // partition (URLs silently dropped or duplicated across shards). Emit NO spec
+      // URLs in that case; the static/hub/listing segments this chunk already holds
+      // are unaffected and still ship.
+      if (specArr.length === P) {
       for (let ri = 0; ri < regionArr.length; ri++) {
-        const globalRegionIdx = rStart + ri;
-        for (let pi = 0; pi < specArr.length; pi++) {
-          const localIdx = globalRegionIdx * P + pi;
-          if (localIdx < a || localIdx >= b) continue;
-          out.push(
-            renderUrl({
-              loc: `${SITE_URL}/${regionArr[ri].slug}/${specArr[pi].slug}`,
-              lastmod: indexLastmod,
-              changefreq: "weekly",
-              priority: "0.7",
-            }),
-          );
+          const globalRegionIdx = rStart + ri;
+          for (let pi = 0; pi < specArr.length; pi++) {
+            const localIdx = globalRegionIdx * P + pi;
+            if (localIdx < a || localIdx >= b) continue;
+            out.push(
+              renderUrl({
+                loc: `${SITE_URL}/${regionArr[ri].slug}/${specArr[pi]}`,
+                lastmod: indexLastmod,
+                changefreq: "weekly",
+                priority: "0.7",
+              }),
+            );
+          }
         }
       }
     }

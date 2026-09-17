@@ -8,6 +8,13 @@ import {
   type DirectoryRegion,
 } from "@/lib/directory-hub";
 import { WebSiteJsonLd, OrganizationJsonLd } from "@/components/JsonLd";
+import { selfAlternates } from "@/lib/seo-alternates";
+import type { Metadata } from "next";
+
+// The homepage canonical used to come from the root layout, where it also leaked onto
+// every other route (TDL #1241). It is stated here now; title/description/OG still
+// inherit from the layout.
+export const metadata: Metadata = { alternates: selfAlternates("/") };
 
 export const dynamic = "force-dynamic";
 

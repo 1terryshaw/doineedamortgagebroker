@@ -7,6 +7,7 @@ import { COUNTRY } from "@/lib/country";
 import type { Region, Listing, Specialization } from "@/types";
 import ListingCard from "@/components/ListingCard";
 import { getCardMediaForListings } from "@/lib/listing-photos";
+import { selfAlternates } from "@/lib/seo-alternates";
 
 interface PageProps {
   params: Promise<{ citySlug: string; professionSlug: string }>;
@@ -122,6 +123,7 @@ export async function generateMetadata({
   return {
     title: `${title} | ${SITE_NAME}`,
     description,
+    alternates: selfAlternates(`/${city.slug}/${specialization.slug}`),
     openGraph: {
       title,
       description,
@@ -143,6 +145,23 @@ export default async function CitySpecializationPage({ params }: PageProps) {
   }
 
   const listings = await getListingsBySpecAndCity(city.id, specialization.id);
+
+  // EMPTY-HUB GATE (TDL #1241, Site Surfer 2026-09-16 EMPTY-HUB-200 on
+  // /el-granada-ca/construction). A hub with zero listings and zero child hubs must 404,
+  // not serve HTTP 200: a 200 with no outbound listing links is a thin page Google will
+  // crawl, index and then hold against the whole hub tier. Today
+  // mortgage_listing_specializations is EMPTY, so this gate 404s the entire
+  // /{city}/{spec} surface — which is the honest answer: none of these pages have
+  // content. The surface returns on its own the moment spec links are loaded.
+  //
+  // This is a HUB gate, not a de-serve gate: getListingsBySpecAndCity already carries
+  // the `.neq("is_published", false)` read guard, so a city whose only brokers were
+  // de-served 404s here too, which is correct — the page would otherwise be an empty
+  // shell built around withdrawn people. Note this route is NOT in the sitemap
+  // (src/lib/sitemap-chunks.ts), so no advertised URL starts 404ing.
+  if (listings.length === 0) {
+    notFound();
+  }
 
   // Batched owner media for the cards (one query, no per-card waterfall).
   const cardMedia = await getCardMediaForListings(listings.map((l) => l.id));
@@ -236,62 +255,23 @@ export default async function CitySpecializationPage({ params }: PageProps) {
       </section>
 
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-        {/* Listings grid */}
-        {listings.length > 0 ? (
-          <section>
-            <h2 className="text-xl font-bold text-[#0f2a4a] sm:text-2xl">
-              Top {specialization.name} Brokers in {city.name}
-            </h2>
-            <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {listings.map((listing) => (
-                <ListingCard
-                  key={listing.id}
-                  listing={listing}
-                  ownerHeroUrl={cardMedia.get(listing.id)?.heroUrl}
-                  ownerLogoUrl={cardMedia.get(listing.id)?.logoUrl}
-                />
-              ))}
-            </div>
-          </section>
-        ) : (
-          <div className="rounded-xl border border-gray-200 bg-white py-16 text-center">
-            <svg
-              className="mx-auto h-12 w-12 text-gray-300"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+        {/* Listings grid. There is no empty state: the empty-hub gate above 404s a
+            hub with zero listings, so this branch is unreachable by construction. */}
+        <section>
+          <h2 className="text-xl font-bold text-[#0f2a4a] sm:text-2xl">
+            Top {specialization.name} Brokers in {city.name}
+          </h2>
+          <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {listings.map((listing) => (
+              <ListingCard
+                key={listing.id}
+                listing={listing}
+                ownerHeroUrl={cardMedia.get(listing.id)?.heroUrl}
+                ownerLogoUrl={cardMedia.get(listing.id)?.logoUrl}
               />
-            </svg>
-            <h3 className="mt-4 text-lg font-semibold text-[#0f2a4a]">
-              No {specialization.name.toLowerCase()} brokers found in{" "}
-              {city.name}
-            </h3>
-            <p className="mt-2 text-sm text-gray-500">
-              Try browsing all brokers in {city.name} or search in other cities.
-            </p>
-            <div className="mt-4 flex items-center justify-center gap-4">
-              <Link
-                href={`/${city.slug}`}
-                className="text-sm font-medium text-teal-600 hover:text-teal-700"
-              >
-                All {city.name} Brokers
-              </Link>
-              <span className="text-gray-300">|</span>
-              <Link
-                href={`/search?specialization=${specialization.slug}`}
-                className="text-sm font-medium text-teal-600 hover:text-teal-700"
-              >
-                {specialization.name} in Other Cities
-              </Link>
-            </div>
+            ))}
           </div>
-        )}
+        </section>
 
         {/* SEO content */}
         <section className="mt-16 rounded-xl border border-gray-200 bg-white p-6 sm:p-8">

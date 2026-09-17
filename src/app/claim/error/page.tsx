@@ -1,8 +1,10 @@
 import { Metadata } from "next";
 import Link from "next/link";
+import { selfAlternates } from "@/lib/seo-alternates";
 
 export const metadata: Metadata = {
   title: "Claim Error",
+  alternates: selfAlternates("/claim/error"),
 };
 
 export default function ClaimErrorPage() {

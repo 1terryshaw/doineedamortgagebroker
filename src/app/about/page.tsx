@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SITE_NAME } from "@/lib/constants";
 import { JURISDICTION } from "@/lib/jurisdiction";
+import { selfAlternates } from "@/lib/seo-alternates";
 
 export const metadata: Metadata = {
   title: `About | ${SITE_NAME}`,
   description: `${SITE_NAME} is ${JURISDICTION.directoryScope} of licensed mortgage brokers and loan originators sourced from ${JURISDICTION.regulatorRecords}.`,
+  alternates: selfAlternates("/about"),
 };
 
 export default function AboutPage() {

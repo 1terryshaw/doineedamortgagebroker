@@ -3,7 +3,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import "./globals.css";
 import { SITE_NAME, SITE_URL } from "@/lib/constants";
-import { JURISDICTION, HREFLANG_ALTERNATES } from "@/lib/jurisdiction";
+import { JURISDICTION } from "@/lib/jurisdiction";
 import Disclaimer from "@/components/Disclaimer";
 
 const TITLE = `${SITE_NAME} | ${JURISDICTION.siteTitleSuffix}`;
@@ -35,12 +35,13 @@ export const metadata: Metadata = {
     title: TITLE,
     description: DESCRIPTION,
   },
-  alternates: {
-    canonical: SITE_URL,
-    // Additive cross-host hreflang (canonical host unchanged). Per-page
-    // reciprocity completes once findmymortgagebroker.ca repoints here (Phase 2).
-    languages: HREFLANG_ALTERNATES,
-  },
+  // NO `alternates` HERE (TDL #1241). A layout-level canonical is inherited verbatim
+  // by every page that does not override it, so `canonical: SITE_URL` told Google that
+  // the listing pages and the city/profession hubs were duplicates of the homepage
+  // (Site Surfer 2026-09-16, CANONICAL ×3). Each route now states its own canonical and
+  // its own per-path hreflang pair via `selfAlternates()` in src/lib/seo-alternates.ts.
+  // A route that forgets emits NO canonical, which Google resolves to self — wrong-by-
+  // omission is recoverable, wrong-by-assertion is not.
 };
 
 export default async function RootLayout({

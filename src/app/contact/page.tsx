@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { SITE_NAME } from "@/lib/constants";
 import { JURISDICTION } from "@/lib/jurisdiction";
+import { selfAlternates } from "@/lib/seo-alternates";
 
 export const metadata: Metadata = {
   title: `Contact | ${SITE_NAME}`,
   description: `Contact ${SITE_NAME} — report incorrect listings, request removal, or ask a question about the directory.`,
+  alternates: selfAlternates("/contact"),
 };
 
 export default function ContactPage() {

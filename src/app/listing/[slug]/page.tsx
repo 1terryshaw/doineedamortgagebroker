@@ -15,6 +15,7 @@ import { LocalBusinessJsonLd } from "@/components/JsonLd";
 import FAQSection from "@/components/FAQSection";
 import { getEnrichment } from "@/lib/knowledge";
 import EnrichmentBlock from "@/components/EnrichmentBlock";
+import { selfAlternates } from "@/lib/seo-alternates";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -113,6 +114,10 @@ export async function generateMetadata({
   return {
     title,
     description,
+    // Self-canonical on the listing's OWN path (TDL #1241). This route inherited the
+    // root layout's homepage canonical, so every broker page declared itself a
+    // duplicate of "/" (Site Surfer 2026-09-16, /listing/mark-ramirez-miami).
+    alternates: selfAlternates(`/listing/${listing.slug}`),
     openGraph: {
       title,
       description,

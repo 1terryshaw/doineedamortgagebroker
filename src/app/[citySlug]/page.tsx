@@ -9,6 +9,7 @@ import ListingCard from "@/components/ListingCard";
 import { getCardMediaForListings } from "@/lib/listing-photos";
 import { ItemListJsonLd } from "@/components/JsonLd";
 import FAQSection from "@/components/FAQSection";
+import { selfAlternates } from "@/lib/seo-alternates";
 
 interface PageProps {
   params: Promise<{ citySlug: string }>;
@@ -104,6 +105,7 @@ export async function generateMetadata({
   return {
     title: `${title} | ${SITE_NAME}`,
     description,
+    alternates: selfAlternates(`/${city.slug}`),
     openGraph: {
       title,
       description,

@@ -1,5 +1,10 @@
 import Link from "next/link";
 
+// tap44: every control in this nav carries min-h-[44px]. px-4 py-2 on text-sm rendered
+// 38px tall (20px line-box + 16px padding + 2px border) — under the 40px Site Surfer
+// floor and under the 44px fleet standard (Site Surfer 2026-09-16, /directory @390).
+// The disabled <span>s get it too, so the row keeps one baseline height.
+
 type Props = {
   currentPage: number;
   hasMore: boolean;
@@ -34,12 +39,12 @@ export default function Pagination({
         {currentPage > 1 ? (
           <Link
             href={buildHref(currentPage - 1)}
-            className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="inline-flex min-h-[44px] items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             ← Previous
           </Link>
         ) : (
-          <span className="inline-flex items-center rounded-md border border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-400">
+          <span className="inline-flex min-h-[44px] items-center rounded-md border border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-400">
             ← Previous
           </span>
         )}
@@ -49,12 +54,12 @@ export default function Pagination({
         {hasMore ? (
           <Link
             href={buildHref(currentPage + 1)}
-            className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="inline-flex min-h-[44px] items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             Next →
           </Link>
         ) : (
-          <span className="inline-flex items-center rounded-md border border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-400">
+          <span className="inline-flex min-h-[44px] items-center rounded-md border border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-400">
             Next →
           </span>
         )}

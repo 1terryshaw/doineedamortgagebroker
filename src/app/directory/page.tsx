@@ -13,6 +13,7 @@ import ListingCard from "@/components/ListingCard";
 import { JURISDICTION } from "@/lib/jurisdiction";
 import { SITE_URL } from "@/lib/constants";
 import { getUkAllTownHubs, getUkCounties } from "@/lib/uk-mortgage";
+import { selfAlternates } from "@/lib/seo-alternates";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,9 @@ const DIRECTORY_URL = `${SITE_URL}/directory`;
 export const metadata = {
   title: PAGE_TITLE,
   description: PAGE_DESC,
-  alternates: { canonical: DIRECTORY_URL },
+  // Self-canonical already; selfAlternates() adds the per-path hreflang pair the
+  // layout used to supply (overriding `alternates` replaces the parent wholesale).
+  alternates: selfAlternates("/directory"),
   openGraph: {
     title: PAGE_TITLE,
     description: PAGE_DESC,
