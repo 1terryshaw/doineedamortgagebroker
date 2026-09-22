@@ -77,15 +77,6 @@ async function getCityListings(regionId: string): Promise<Listing[]> {
   return (data as unknown as Listing[] | null) ?? [];
 }
 
-async function getSpecializations(): Promise<Specialization[]> {
-  const supabase = await createServerSupabaseClient();
-  const { data } = await supabase
-    .from("mortgage_specializations")
-    .select("*")
-    .order("name");
-
-  return (data as Specialization[] | null) ?? [];
-}
 
 export const dynamic = "force-dynamic";
 
@@ -122,10 +113,45 @@ export default async function CityPage({ params }: PageProps) {
     notFound();
   }
 
-  const [listings, specializations] = await Promise.all([
-    getCityListings(city.id),
-    getSpecializations(),
-  ]);
+  const listings = await getCityListings(city.id);
+
+  // EMPTY-HUB 404 (TDL #1257, completing TDL #1241's A2). A city hub with zero
+  // listings is the same 200-shell A2 removed at /{city}/{spec}: it renders an
+  // H1, a FAQ block and a chip row, and not one broker. Measured on prod before
+  // the flip, 13 of findmymortgagebroker.ca's 61 advertised hubs were exactly
+  // that. The PAIRED sitemap change ships in the same commit — the hub segment
+  // now derives from getOccupiedRegionSlugs(), so nothing advertised starts 404ing.
+  if (listings.length === 0) {
+    notFound();
+  }
+
+  // Browse-by-Specialization chips, derived from OCCUPANCY rather than from the
+  // global `mortgage_specializations` list.
+  //
+  // This is the other half of #1241. The child route /{city}/{spec} 404s when
+  // `listings.length === 0`, and `mortgage_listing_specializations` is EMPTY, so
+  // EVERY chip this hub rendered was a dead link — 9 per hub, on every city, on
+  // both hosts. #1241 caught it in the sitemap (getOccupiedSpecSlugs) and left it
+  // in the page. Routes, sitemap AND in-page links are three expressions of one
+  // gate; a link the page emits is an advertisement exactly like a sitemap entry.
+  //
+  // The specializations travel WITH the listings (CITY_LISTING_SELECT already
+  // embeds mortgage_listing_specializations -> mortgage_specializations), so this
+  // is the child route's own predicate, not a second hand-typed chain, and it
+  // costs no extra query. While the link table is empty the section disappears;
+  // the moment a listing is linked to a spec, its chip returns on its own.
+  const specializations: Specialization[] = (() => {
+    const byId = new Map<string, Specialization>();
+    for (const l of listings as unknown as {
+      mortgage_listing_specializations?: { mortgage_specializations?: Specialization | null }[] | null;
+    }[]) {
+      for (const link of l.mortgage_listing_specializations ?? []) {
+        const sp = link?.mortgage_specializations;
+        if (sp && sp.id && sp.slug) byId.set(sp.id, sp);
+      }
+    }
+    return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+  })();
 
   // Batched owner media for the cards (one query, no per-card waterfall).
   const cardMedia = await getCardMediaForListings(listings.map((l) => l.id));

@@ -196,14 +196,71 @@ export async function getOccupiedSpecSlugs(): Promise<string[]> {
   return ((specs ?? []) as { slug: string }[]).map((sp) => sp.slug);
 }
 
+/**
+ * The region slugs that a REGION HUB actually exists for — i.e. regions with at
+ * least one listing that passes the SAME predicate `/[citySlug]` renders from
+ * (is_active, country, and the de-serve read guard).
+ *
+ * TDL #1257. Routes and the sitemap are two expressions of ONE gate, and #1241
+ * applied that rule to the SPEC segment only. The hub segment kept counting every
+ * row of `mortgage_regions`, so the moment `/[citySlug]` gates on occupancy the
+ * sitemap would advertise the hubs that start 404ing. Measured on prod before the
+ * flip: findmymortgagebroker.ca advertised 61 one-segment hubs, of which 13 —
+ * /bradford-west-gwillimbury, /chatham-kent, /east-gwillimbury, /georgina,
+ * /halton-hills, /huntsville, /innisfil, /kawartha-lakes, /midland,
+ * /new-tecumseth, /norfolk-county, /quinte-west, /wasaga-beach — served HTTP 200
+ * with ZERO listing links. This derivation is what keeps that intersection at 0.
+ *
+ * `region_id` is scanned in pages because PostgREST caps a response at 1000 rows;
+ * a single unranged select would silently truncate and under-report occupancy,
+ * which fails in the DANGEROUS direction (a live hub dropped from the sitemap).
+ */
+export async function getOccupiedRegionSlugs(): Promise<string[]> {
+  const supabase = await createServiceRoleClient();
+  const occupied = new Set<string>();
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from("mortgage_listings")
+      .select("region_id")
+      .eq("is_active", true)
+      .eq("country", COUNTRY)
+      .neq("is_published", false)
+      .not("region_id", "is", null)
+      .order("region_id")
+      .range(from, from + PAGE - 1);
+    // FAIL CLOSED on a paging error: returning a SHORT set here would drop live
+    // hubs out of the sitemap, which is worse than emitting none.
+    if (error) throw new Error(`getOccupiedRegionSlugs failed at offset ${from}: ${error.message}`);
+    const rows = (data ?? []) as { region_id: string }[];
+    for (const r of rows) if (r.region_id) occupied.add(r.region_id);
+    if (rows.length < PAGE) break;
+  }
+  if (occupied.size === 0) return [];
+  // Resolve ids -> slugs inside the province whitelist, ordered by slug, in
+  // chunks because `.in()` takes a URL-encoded list.
+  const ids = Array.from(occupied);
+  const slugs: string[] = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error } = await supabase
+      .from("mortgage_regions")
+      .select("slug")
+      .in("id", ids.slice(i, i + 200))
+      .in("province", PROVINCE_WHITELIST[COUNTRY]);
+    if (error) throw new Error(`getOccupiedRegionSlugs slug resolve failed: ${error.message}`);
+    for (const r of (data ?? []) as { slug: string }[]) slugs.push(r.slug);
+  }
+  return slugs.sort();
+}
+
 /** Count each segment (head-only count queries) and derive the chunk count. */
 export async function getSegments(): Promise<Segments> {
   const supabase = await createServiceRoleClient();
-  const [rRes, occupiedSpecs, lRes] = await Promise.all([
-    supabase
-      .from("mortgage_regions")
-      .select("slug", { count: "exact", head: true })
-      .in("province", PROVINCE_WHITELIST[COUNTRY]),
+  const [occupiedRegions, occupiedSpecs, lRes] = await Promise.all([
+    // OCCUPIED regions only (TDL #1257) — a region with no listing behind it
+    // renders a hub that now 404s, so counting every mortgage_regions row here
+    // would advertise dead URLs. Same rule the spec segment already follows.
+    getOccupiedRegionSlugs(),
     // OCCUPIED specs only — see getOccupiedSpecSlugs(). A spec with no listing links
     // behind it produces /{region}/{spec} hubs that render zero listings, and those
     // hubs now 404 (TDL #1241 empty-hub gate). Routes and the sitemap are two
@@ -226,7 +283,7 @@ export async function getSegments(): Promise<Segments> {
       .neq("is_published", false),
   ]);
   const S = staticEntries("").length;
-  const R = rRes.count ?? 0;
+  const R = occupiedRegions.length;
   const P = occupiedSpecs.length;
   const RS = R * P;
   const L = lRes.count ?? 0;
@@ -287,14 +344,10 @@ export async function renderChunk(id: number): Promise<string> {
     if (lo < hubEnd && hi > hubStart) {
       const a = Math.max(lo, hubStart) - hubStart;
       const b = Math.min(hi, hubEnd) - hubStart;
-      const { data } = await supabase
-        .from("mortgage_regions")
-        .select("slug")
-        .in("province", PROVINCE_WHITELIST[COUNTRY])
-        .order("slug")
-        .range(a, b - 1);
-      for (const region of data ?? [])
-        out.push(renderUrl({ loc: `${SITE_URL}/${region.slug}`, lastmod: indexLastmod, changefreq: "weekly", priority: "0.8" }));
+      // The SAME derivation getSegments() counted R from — see getOccupiedRegionSlugs().
+      const hubSlugs = (await getOccupiedRegionSlugs()).slice(a, b);
+      for (const slug of hubSlugs)
+        out.push(renderUrl({ loc: `${SITE_URL}/${slug}`, lastmod: indexLastmod, changefreq: "weekly", priority: "0.8" }));
     }
 
     // --- REGION × SPEC (region-major, spec-minor; region.slug then spec.slug) ---
@@ -303,18 +356,14 @@ export async function renderChunk(id: number): Promise<string> {
       const b = Math.min(hi, specEnd) - specStart;
       const rStart = Math.floor(a / P);
       const rEnd = Math.floor((b - 1) / P); // inclusive region index
-      const [specSlugs, { data: regions }] = await Promise.all([
+      const [specSlugs, allRegionSlugs] = await Promise.all([
         // The SAME derivation getSegments() counted P from — see getOccupiedSpecSlugs().
         getOccupiedSpecSlugs(),
-        supabase
-          .from("mortgage_regions")
-          .select("slug")
-          .in("province", PROVINCE_WHITELIST[COUNTRY])
-          .order("slug")
-          .range(rStart, rEnd),
+        // ...and the SAME one it counted R from — see getOccupiedRegionSlugs().
+        getOccupiedRegionSlugs(),
       ]);
       const specArr = specSlugs;
-      const regionArr = regions ?? [];
+      const regionArr = allRegionSlugs.slice(rStart, rEnd + 1).map((slug) => ({ slug }));
       // Fail CLOSED on a count/list disagreement: the shard bounds were computed from
       // getSegments()'s P, and indexing into a different-length list slips the
       // partition (URLs silently dropped or duplicated across shards). Emit NO spec
