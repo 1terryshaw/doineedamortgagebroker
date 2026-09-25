@@ -207,10 +207,8 @@ export function sanitizeExtras(input: Record<string, unknown>): Record<string, u
           .slice(0, MAX_SERVICE_AREA)
       : null;
   }
-  if ("gbp_url" in input) {
-    const v = typeof input.gbp_url === "string" ? input.gbp_url.trim() : "";
-    out.gbp_url = v && isValidGbpUrl(v) ? v : (v ? null : "");
-  }
+  // gbp_url is intentionally NOT written here (claimant-edit-ux-stamp-v1, door 2 closed). GBP is owned
+  // solely by /api/owner/gbp-connect; the edit-save path must never persist a raw, unresolved gbp_url.
   if ("year_established" in input) {
     const n = typeof input.year_established === "number"
       ? input.year_established

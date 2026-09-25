@@ -3,6 +3,8 @@ import { Metadata } from "next";
 import { verifyOwnerAccess } from "@/lib/auth";
 import { listPhotosForListing } from "@/lib/listing-photos";
 import OwnerEditForm from "@/components/OwnerEditForm";
+import { addressEditClass, addressEditAllowed } from "@/lib/owner-location-edit";
+import { getOwnerGbpStatus } from "@/lib/owner-gbp-status";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +26,15 @@ export default async function OwnerEditPage({ params }: Props) {
 
   const { photos, logo } = await listPhotosForListing(result.listing.id);
 
+  // claimant-edit-ux-stamp-v1: R2 street/postal gate (source class) + R1 GBP status (read-only).
+  const lst = result.listing as unknown as Record<string, unknown>;
+  const addressEditable = addressEditAllowed(await addressEditClass(lst.source as string | null));
+  const gbpStatus = await getOwnerGbpStatus({
+    id: result.listing.id as string,
+    google_place_id: lst.google_place_id as string | null,
+    gbp_url: lst.gbp_url as string | null,
+  });
+
   // Mortgage's OwnerEditForm reads name/province/bio from the listing directly
   // (no initialName/initialProvince props, unlike canonical). onSaved/onCancel
   // omitted → the form redirects back to /owner/{slug} standalone.
@@ -33,6 +44,9 @@ export default async function OwnerEditPage({ params }: Props) {
         listing={result.listing}
         initialPhotos={photos}
         initialLogo={logo}
+        addressEditable={addressEditable}
+        gbpStatus={gbpStatus}
+        gbpConnectHref={null}
       />
     </div>
   );

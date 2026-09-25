@@ -1,11 +1,13 @@
 "use client";
+import GbpStatusCard from "@/components/owner-edit/GbpStatusCard";
+import AddressFields from "@/components/owner-edit/AddressFields";
+import type { OwnerGbpStatus } from "@/lib/owner-gbp-status";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CANADIAN_PROVINCES, US_STATES } from "@/lib/provinces";
 import { canonical } from "@/lib/vertical-canonical";
 import { HoursJson, ListingPhoto } from "@/lib/listing-extras";
-import HelpDropdown from "@/components/owner-edit/HelpDropdown";
 import TagListInput from "@/components/owner-edit/TagListInput";
 import UrlInput from "@/components/owner-edit/UrlInput";
 import HoursEditor from "@/components/owner-edit/HoursEditor";
@@ -43,6 +45,10 @@ interface Props {
   listing: OwnerEditListing;
   initialPhotos: ListingPhoto[];
   initialLogo: ListingPhoto | null;
+  /** claimant-edit-ux-stamp-v1: resolved server-side (R2); always false here (no show_address column). */
+  addressEditable?: boolean;
+  gbpStatus?: OwnerGbpStatus;
+  gbpConnectHref?: string | null;
   // The dashboard owns edit state — these let the form live inline in
   // DashboardClient rather than redirect to a standalone /owner page.
   onSaved?: () => void;
@@ -61,7 +67,9 @@ interface FormState {
   hours_json: HoursJson | null;
   services: string[];
   service_area: string[];
-  gbp_url: string;
+  /** claimant-edit-ux-stamp-v1 (R2) — sent only when addressEditable. */
+  address: string;
+  postal_code: string;
 }
 
 function normalizeUrl(url: string): string {
@@ -75,6 +83,9 @@ export default function OwnerEditForm({
   listing,
   initialPhotos,
   initialLogo,
+  addressEditable = false,
+  gbpStatus,
+  gbpConnectHref = null,
   onSaved,
   onCancel,
 }: Props) {
@@ -93,7 +104,8 @@ export default function OwnerEditForm({
     hours_json: listing.hours_json ?? null,
     services: listing.services ?? [],
     service_area: listing.service_area ?? [],
-    gbp_url: listing.gbp_url ?? "",
+    address: (listing as { address?: string | null }).address ?? "",
+    postal_code: (listing as { postal_code?: string | null }).postal_code ?? "",
   });
 
   const [photos, setPhotos] = useState<ListingPhoto[]>(initialPhotos);
@@ -129,7 +141,7 @@ export default function OwnerEditForm({
       hours_json: form.hours_json,
       services: form.services,
       service_area: form.service_area,
-      gbp_url: form.gbp_url ? normalizeUrl(form.gbp_url) : "",
+      ...(addressEditable ? { address: form.address, postal_code: form.postal_code } : {}),
     };
 
     try {
@@ -172,6 +184,8 @@ export default function OwnerEditForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-8 max-w-3xl">
       <h1 className="text-2xl font-bold">Edit: {form.name || listing.name}</h1>
+
+      {gbpStatus && <GbpStatusCard status={gbpStatus} connectHref={gbpConnectHref} />}
 
       {status === "saved" && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-green-800 text-sm">
@@ -241,6 +255,10 @@ export default function OwnerEditForm({
             </select>
           </div>
         </div>
+        {/* claimant-edit-ux-stamp-v1 (R2): street + postal (read-only on this site: no hide toggle). */}
+        <AddressFields editable={addressEditable} address={form.address} postalCode={form.postal_code}
+          country={String((listing as { country?: string | null }).country ?? "").toUpperCase()}
+          onChange={(f, v) => update(f, v)} />
       </section>
 
       {/* === High-leverage 4: photos, services, service area, GBP === */}
@@ -283,26 +301,6 @@ export default function OwnerEditForm({
           />
         </div>
 
-        <div id="gbp" className="scroll-mt-20">
-          <UrlInput
-            label="Google Business Profile URL"
-            value={form.gbp_url}
-            onChange={(v) => update("gbp_url", v)}
-            kind="gbp"
-            helpSlot={
-              <HelpDropdown label="Google Business Profile URL">
-                <p><strong>What is this?</strong></p>
-                <p>Your Google Business Profile is the listing that shows up when someone Googles your business — with the map, hours, reviews, and photos. It&apos;s free.</p>
-                <p><strong>How to find yours</strong></p>
-                <p>Search Google for your business name. If a panel appears on the right with a map, that&apos;s your profile. Click &ldquo;Own this business?&rdquo; to start claiming. If nothing appears, go to <a href="https://www.google.com/business" target="_blank" rel="noopener" className="text-blue-700 underline">google.com/business</a> to create one.</p>
-                <p><strong>How to claim it</strong></p>
-                <p>Google will verify by postcard, phone, or video. Takes 5-14 days. Once claimed, copy your profile&apos;s share URL (looks like g.page/YourBusiness or a maps.google.com link) and paste it here.</p>
-                <p><strong>Why it matters</strong></p>
-                <p>Claimed GBPs rank higher, get more clicks, and let you respond to reviews. It&apos;s the single highest-leverage free thing a local {canonical.noun} can do.</p>
-              </HelpDropdown>
-            }
-          />
-        </div>
       </section>
 
       {/* === Progressive disclosure: extras === */}
