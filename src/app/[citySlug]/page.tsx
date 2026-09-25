@@ -37,7 +37,7 @@ const CITY_LISTING_SELECT = `
   id, name, slug, license_number, email, phone, website, address, city, province,
   postal_code, latitude, longitude, region_id, city_slug, bio, photo_url, languages,
   years_experience, google_rating, google_review_count, is_claimed, is_premium,
-  is_active, claimed_by, google_place_id, source, created_at, updated_at, owner_email,
+  is_active, claimed_by, google_place_id, source, created_at, updated_at,
   short_description, claimed, siteforge_preview_url, siteforge_generation_id,
   outreach_email4_at, now_hiring, subscription_tier, listing_type, claimed_at,
   claim_verified, outreach_unsubscribed, featured, outreach_email1_at,

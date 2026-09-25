@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
 import Link from "next/link";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { SITE_NAME, SITE_URL, INQUIRY_NO_EMAIL_POLICY } from "@/lib/constants";
-import { hasDeliverableEmail } from "@/lib/inquiry-guard";
+import { hasDeliverableEmail, effectiveForwardEmail } from "@/lib/inquiry-guard";
 import { COUNTRY } from "@/lib/country";
 import { getPhotoUrls } from "@/lib/listing-media";
 import { listPhotosForListing } from "@/lib/listing-photos";
@@ -33,7 +33,7 @@ const LISTING_SELECT = `
   id, name, slug, license_number, email, phone, website, address, city, province,
   postal_code, latitude, longitude, region_id, city_slug, bio, photo_url, languages,
   years_experience, google_rating, google_review_count, is_claimed, is_premium,
-  is_active, claimed_by, google_place_id, source, created_at, updated_at, owner_email,
+  is_active, claimed_by, google_place_id, source, created_at, updated_at,
   short_description, claimed, siteforge_preview_url, siteforge_generation_id,
   outreach_email4_at, now_hiring, subscription_tier, listing_type, claimed_at,
   claim_verified, outreach_unsubscribed, featured, outreach_email1_at,
@@ -56,7 +56,9 @@ const LISTING_SELECT = `
   )
 `;
 
-async function getListing(slug: string): Promise<Listing | null> {
+type ListingWithGate = Listing & { owner_email_deliverable?: boolean };
+
+async function getListing(slug: string): Promise<ListingWithGate | null> {
   const supabase = await createServerSupabaseClient();
 
   const { data, error } = await supabase
@@ -78,12 +80,25 @@ async function getListing(slug: string): Promise<Listing | null> {
 
   if (error || !data) return null;
 
+  // INQUIRY GATE (TDL #1267). owner_email is NOT in LISTING_SELECT: this read runs as anon
+  // (or authenticated), and neither role holds SELECT on it (fleet-secret-column-wave2-v1).
+  // It is read here with the service-role client and reduced to a boolean; the address
+  // never reaches the page props. Gate semantics unchanged (effectiveForwardEmail).
+  const svc = await createServiceRoleClient();
+  const { data: gate } = await svc
+    .from("mortgage_listings")
+    .select("owner_email")
+    .eq("id", (data as unknown as { id: string }).id)
+    .maybeSingle();
+  const owner_email_deliverable =
+    effectiveForwardEmail({ owner_email: (gate as { owner_email?: string | null } | null)?.owner_email ?? null }) !== null;
+
   // Cast through `unknown`: the explicit projection yields a precise row shape,
   // while the Listing type over-declares a few fields that are not DB columns
   // (enrichment_status/enrichment_data/premium_tier/premium_expires_at/status —
   // always undefined at runtime, never rendered here). Same pattern as
   // lib/directory-hub.ts.
-  return data as unknown as Listing;
+  return { ...(data as unknown as Listing), owner_email_deliverable };
 }
 
 export async function generateMetadata({
@@ -492,7 +507,8 @@ export default async function ListingPage({ params }: PageProps) {
               id="inquiry-form"
               className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sm:p-8"
             >
-              {hasDeliverableEmail(listing) ||
+              {listing.owner_email_deliverable === true ||
+              hasDeliverableEmail({ email: listing.email ?? null }) ||
               INQUIRY_NO_EMAIL_POLICY === "capture" ? (
                 <>
                   <h2 className="text-xl font-semibold text-[#1B2A4A] mb-4">
