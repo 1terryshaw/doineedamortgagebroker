@@ -60,6 +60,12 @@ export async function POST(request: NextRequest) {
 
   const safeUpdates: Record<string, unknown> = {};
 
+  // ADDRESS SHOW/HIDE (claimant-edit-ux-stamp-v1 follow-up, migration 041). The ONLY writer of
+  // `show_address`. STRICT `=== true`: anything that is not literally true means HIDE.
+  if ("show_address" in updates) {
+    safeUpdates.show_address = updates.show_address === true;
+  }
+
   for (const field of PASSTHROUGH_FIELDS) {
     if (field in updates && typeof updates[field] === "string") {
       safeUpdates[field] =

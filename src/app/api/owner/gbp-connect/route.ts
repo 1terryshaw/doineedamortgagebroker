@@ -1,0 +1,83 @@
+import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath, revalidateTag } from "next/cache";
+import { verifyOwnerAccess } from "@/lib/auth";
+import { GBP_OWNER_MESSAGES, resolveGoogleBusinessProfileUrl } from "@/lib/gbp-connector";
+import { LISTINGS_TABLE, supabaseAdmin } from "@/lib/supabase-admin";
+
+export const dynamic = "force-dynamic";
+
+// claimant-edit-ux-stamp-v1 follow-up (Terry 2026-09-25, item 3): the fleet's single-door GBP writer,
+// ported to a site that had none. FEATURE-ID ONLY — this site is not in the R1 paste-time-resolve set,
+// so there is NO Places call here: resolveGoogleBusinessProfileUrl parses the link and follows Google
+// short-link redirects only. Owner-cookie + token + claimed gated; 409 already_linked; provenance row.
+const purgeTag = revalidateTag as unknown as (tag: string, profile?: { expire: number }) => void;
+const HINT = " Tip: on Google Maps, open your business, tap Share, then Copy link, and paste that link here.";
+
+export async function POST(request: NextRequest) {
+  let body: { slug?: unknown; gbpUrl?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ ok: false, error: "invalid_url", message: GBP_OWNER_MESSAGES.invalid_url }, { status: 400 });
+  }
+  const access = typeof body.slug === "string" ? await verifyOwnerAccess(body.slug) : null;
+  if (!access) return NextResponse.json({ ok: false, error: "unauthenticated", message: "Please sign in to connect Google." }, { status: 401 });
+  const listing = access.listing as { id: string; slug: string; owner_auth_token: string; claimed?: boolean | null; is_claimed?: boolean | null };
+  if (!(listing.claimed === true || listing.is_claimed === true) || typeof body.gbpUrl !== "string") {
+    return NextResponse.json({ ok: false, error: "not_authorized", message: "Your account cannot connect this listing." }, { status: 403 });
+  }
+
+  const resolution = await resolveGoogleBusinessProfileUrl(body.gbpUrl);
+  if (!resolution.ok) {
+    return NextResponse.json({ ok: false, error: resolution.code, message: GBP_OWNER_MESSAGES[resolution.code] + HINT }, { status: 400 });
+  }
+
+  const { error: updateError, count } = await supabaseAdmin
+    .from(LISTINGS_TABLE)
+    .update({ google_place_id: resolution.placeId, gbp_url: resolution.normalizedUrl }, { count: "exact" })
+    .eq("id", listing.id)
+    .eq("owner_auth_token", listing.owner_auth_token);
+  if (updateError || count !== 1) {
+    const isUnique = updateError?.code === "23505" || /unique|duplicate key/i.test(updateError?.message || "");
+    if (isUnique) {
+      const { data: existing } = await supabaseAdmin.from(LISTINGS_TABLE).select("id").eq("google_place_id", resolution.placeId).maybeSingle();
+      await supabaseAdmin.from("place_id_collision_log").insert({
+        source_table: LISTINGS_TABLE,
+        vertical: process.env.BILLING_VERTICAL_SLUG ?? LISTINGS_TABLE.replace(/_listings$/, ""),
+        attempting_listing_id: listing.id,
+        existing_listing_id: (existing as { id?: string } | null)?.id ?? null,
+        place_id: resolution.placeId,
+      }).then(() => {}, () => {});
+      return NextResponse.json({
+        ok: false,
+        error: "already_linked",
+        message: "That Google listing is already linked to another business in our directory. If it belongs to you, contact support and we'll get it sorted.",
+      }, { status: 409 });
+    }
+    if (updateError) console.error("[owner/gbp-connect] restricted write failed", updateError.code);
+    return NextResponse.json({ ok: false, error: "connection_not_saved", message: "We could not save the connection. Please try again." }, { status: 500 });
+  }
+
+  // Provenance (TDL #1256): the owner supplied this link himself. places_called is false by construction.
+  await supabaseAdmin.from("empire_places_refresh_log").insert({
+    vertical: process.env.BILLING_VERTICAL_SLUG ?? LISTINGS_TABLE.replace(/_listings$/, ""),
+    listing_table: LISTINGS_TABLE,
+    listing_id: listing.id,
+    listing_slug: listing.slug,
+    place_id: resolution.placeId,
+    outcome: "success",
+    caller: "owner",
+    authorization_ref: "provenance=owner_supplied (gbp-connect, feature-id only, TDL #1256)",
+    places_called: false,
+    detail: `gbp-connect resolve mode=${resolution.mode} chij=not_attempted(site not in R1 set)`,
+  }).then(() => {}, () => {});
+
+  try {
+    revalidatePath(`/owner/${listing.slug}`);
+    revalidatePath(`/directory/${listing.slug}`);
+    purgeTag(`listing:${listing.slug}`, { expire: 0 });
+  } catch (error) {
+    console.error("[owner/gbp-connect] cache invalidation failed", error instanceof Error ? error.name : "unknown");
+  }
+  return NextResponse.json({ ok: true, placeId: resolution.placeId, gbpUrl: resolution.normalizedUrl, mode: resolution.mode, chij: "not_attempted" });
+}

@@ -48,7 +48,7 @@ const LISTING_SELECT = `
   hmda_orig_count, hmda_year, services, service_area, gbp_url, hours_json, owner_name,
   is_published, nmls_id, source_grain, sponsor_nmls_id, sponsor_name, state_license_id,
   rssd_id, outreach_email1_uncounted_send, deserve_candidate, deserve_reason,
-  deserved_at, invite_sent_at,
+  deserved_at, invite_sent_at, show_address, geo_stale,
   region:mortgage_regions(*),
   mortgage_listing_specializations(
     specialization_id,
@@ -98,7 +98,22 @@ async function getListing(slug: string): Promise<ListingWithGate | null> {
   // (enrichment_status/enrichment_data/premium_tier/premium_expires_at/status —
   // always undefined at runtime, never rendered here). Same pattern as
   // lib/directory-hub.ts.
-  return { ...(data as unknown as Listing), owner_email_deliverable };
+  // ADDRESS VISIBILITY + STALE PIN CHOKE POINT (claimant-edit-ux-stamp-v1 follow-up, 041). Every
+  // consumer below (visible address, FAQ answer, JsonLd street + GeoCoordinates) reads this object,
+  // so the gate lives here once. show_address defaults TRUE (pre-041 display unchanged); an owner
+  // who unticks it hides street + postal + the rooftop point. geo_stale (owner moved the location)
+  // withholds the point until it is re-geocoded. `!== true` / `=== true`: absent reads safe.
+  const row = data as unknown as Listing & { show_address?: boolean | null; geo_stale?: boolean | null };
+  const streetPublic = row.show_address === true;
+  const pinOk = streetPublic && row.geo_stale !== true;
+  return {
+    ...row,
+    address: streetPublic ? row.address : null,
+    postal_code: streetPublic ? row.postal_code : null,
+    latitude: pinOk ? row.latitude : null,
+    longitude: pinOk ? row.longitude : null,
+    owner_email_deliverable,
+  } as ListingWithGate;
 }
 
 export async function generateMetadata({

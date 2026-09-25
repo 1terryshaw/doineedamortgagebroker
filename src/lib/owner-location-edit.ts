@@ -36,7 +36,7 @@ export const REGION_SLUG_MODE: "city" | "region" | "none" = "none";
 export const GEO_STALE_NULLS_PRECISION: boolean = false;
 // false where the table has no show_address column (no hide toggle): an editable street there
 // would publish unconditionally, so street/postal stay read-only ("Contact us").
-export const STREET_EDIT_ENABLED: boolean = false;
+export const STREET_EDIT_ENABLED: boolean = true;
 // Set where the table keeps province in BOTH province and province_state as a measured 100%
 // mirror and some read path keys on the other column: a change is written to both.
 export const PROVINCE_MIRROR_COLUMN: string | null = "province";

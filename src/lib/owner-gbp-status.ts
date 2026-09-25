@@ -21,7 +21,7 @@ const REASONS: Record<string, string> = {
   error_places: "We couldn't verify the link with Google right now. Paste your Share link again later.",
 };
 const DEFAULT_REASON =
-  "This kind of Google link can't be verified for reviews. On Google Maps, open your business, tap Share, Copy link, and paste it on your dashboard.";
+  "Your Google profile is linked. Showing Google reviews isn't available for this kind of link on this site yet.";
 
 export async function getOwnerGbpStatus(listing: {
   id: string | number;

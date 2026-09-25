@@ -67,6 +67,8 @@ interface FormState {
   hours_json: HoursJson | null;
   services: string[];
   service_area: string[];
+  /** Owner-controlled public visibility of the street (migration 041). */
+  show_address: boolean;
   /** claimant-edit-ux-stamp-v1 (R2) — sent only when addressEditable. */
   address: string;
   postal_code: string;
@@ -90,6 +92,10 @@ export default function OwnerEditForm({
   onCancel,
 }: Props) {
   const router = useRouter();
+  // show_address is sent / rendered ONLY when this listing object actually carries the column
+  // (the dashboard's inline copy of this form may be fed a narrower projection — sending a
+  // default `false` from there would silently hide a street the owner never touched).
+  const hasShowAddress = typeof (listing as { show_address?: unknown }).show_address === "boolean";
 
   const [form, setForm] = useState<FormState>({
     name: listing.name,
@@ -104,6 +110,8 @@ export default function OwnerEditForm({
     hours_json: listing.hours_json ?? null,
     services: listing.services ?? [],
     service_area: listing.service_area ?? [],
+    // `=== true` so a NULL/absent column reads unticked — the safe direction.
+    show_address: (listing as { show_address?: boolean | null }).show_address === true,
     address: (listing as { address?: string | null }).address ?? "",
     postal_code: (listing as { postal_code?: string | null }).postal_code ?? "",
   });
@@ -141,6 +149,7 @@ export default function OwnerEditForm({
       hours_json: form.hours_json,
       services: form.services,
       service_area: form.service_area,
+      ...(hasShowAddress ? { show_address: form.show_address } : {}),
       ...(addressEditable ? { address: form.address, postal_code: form.postal_code } : {}),
     };
 
@@ -259,6 +268,28 @@ export default function OwnerEditForm({
         <AddressFields editable={addressEditable} address={form.address} postalCode={form.postal_code}
           country={String((listing as { country?: string | null }).country ?? "").toUpperCase()}
           onChange={(f, v) => update(f, v)} />
+        {/* ADDRESS SHOW/HIDE (migration 041). The ONLY writer of `show_address`. */}
+        {hasShowAddress && (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+          <label htmlFor="show-address" className="flex items-start gap-3 cursor-pointer">
+            <input
+              id="show-address"
+              type="checkbox"
+              checked={form.show_address}
+              onChange={(e) => update("show_address", e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 focus:ring-2 focus:ring-blue-500"
+            />
+            <span>
+              <span className="block text-sm font-medium text-gray-700">Show my business address publicly</span>
+              <span className="mt-1 block text-sm text-gray-500">
+                When this is on, your street address and postal code appear on your listing and in the
+                structured data search engines read. When it is off, only your city and region are shown
+                &mdash; useful if you work from home or visit clients.
+              </span>
+            </span>
+          </label>
+        </div>
+        )}
       </section>
 
       {/* === High-leverage 4: photos, services, service area, GBP === */}

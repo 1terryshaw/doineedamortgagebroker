@@ -9,6 +9,7 @@ import { canonical } from "@/lib/vertical-canonical";
 import ListingStrengthCard from "@/components/ListingStrengthCard";
 import OwnerLogoutButton from "@/components/OwnerLogoutButton";
 import OwnerLeads from "@/components/OwnerLeads";
+import GbpConnectCard from "@/components/GbpConnectCard";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -71,6 +72,15 @@ export default async function OwnerPortalPage({ params }: Props) {
         >
           View public listing
         </Link>
+      </div>
+
+      <div className="mt-10">
+        <GbpConnectCard
+          slug={listing.slug}
+          googlePlaceId={(listing as { google_place_id?: string | null }).google_place_id ?? null}
+          gbpUrlOnFile={(listing as { gbp_url?: string | null }).gbp_url ?? null}
+          primaryColor={canonical.primaryColor}
+        />
       </div>
 
       <div className="mt-10">

@@ -46,7 +46,7 @@ export default async function OwnerEditPage({ params }: Props) {
         initialLogo={logo}
         addressEditable={addressEditable}
         gbpStatus={gbpStatus}
-        gbpConnectHref={null}
+        gbpConnectHref={`/owner/${slug}#google-gbp-heading`}
       />
     </div>
   );
