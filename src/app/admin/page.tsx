@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { SITE_NAME } from "@/lib/constants";
 import AdminClient from "@/components/AdminClient";
+import type { ComponentProps } from "react";
 import type { Listing } from "@/types";
 
 export const metadata = {
@@ -27,6 +28,15 @@ export const metadata = {
 const ADMIN_LISTING_COLS =
   "id, name, slug, city, province, email, phone, website, claimed, claimed_by, " +
   "is_active, is_premium, listing_type, subscription_tier, region_id, created_at";
+
+// Explicit projection — NEVER `select("*")` on mortgage_inquiries. This page runs as the
+// logged-in admin (role `authenticated`), which holds COLUMN-level SELECT only: the reply
+// capability columns (reply_token, reply_token_expires_at) are revoked (fleet-secret-column-
+// wave2-v1, TDL #1267), and under a column-scoped grant PostgREST answers `select=*` with
+// 42501. These are the columns AdminClient renders plus the non-secret remainder.
+const ADMIN_INQUIRY_COLS =
+  "id, listing_id, sender_name, sender_email, sender_phone, message, loan_type, " +
+  "status, created_at, updated_at, replied_at, response_time_minutes";
 
 export default async function AdminPage() {
   const supabase = await createServerSupabaseClient();
@@ -55,7 +65,7 @@ export default async function AdminPage() {
       .eq("claimed", true),
     supabase
       .from("mortgage_inquiries")
-      .select("*", { count: "exact", head: true }),
+      .select("id", { count: "exact", head: true }),
     supabase
       .from("mortgage_listings")
       .select("id", { count: "exact", head: true })
@@ -71,7 +81,7 @@ export default async function AdminPage() {
   // Fetch recent inquiries
   const { data: inquiries } = await supabase
     .from("mortgage_inquiries")
-    .select("*, listing:mortgage_listings(name, slug)")
+    .select(`${ADMIN_INQUIRY_COLS}, listing:mortgage_listings(name, slug)`)
     .order("created_at", { ascending: false })
     .limit(20);
 
@@ -100,7 +110,9 @@ export default async function AdminPage() {
           // trivially; a named projection infers a precise row type that does not
           // satisfy Listing. AdminClient only reads id/name/city/claimed.
           listings={(listings as unknown as Listing[]) ?? []}
-          inquiries={inquiries ?? []}
+          // Same for inquiries: ADMIN_INQUIRY_COLS infers a precise row type; the
+          // Inquiry interface also declares form fields this table does not carry.
+          inquiries={(inquiries as unknown as ComponentProps<typeof AdminClient>["inquiries"]) ?? []}
         />
       </div>
     </main>
