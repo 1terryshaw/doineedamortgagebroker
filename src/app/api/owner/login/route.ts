@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin, LISTINGS_TABLE } from "@/lib/supabase-admin";
 import { sendMagicLink } from "@/lib/resend";
 import { generateToken } from "@/lib/auth";
+import { logOwnerAuthEvent } from "@/lib/owner-events";
 
 export const dynamic = "force-dynamic";
 
@@ -72,6 +73,7 @@ export async function POST(request: NextRequest) {
   if (!email) {
     return NextResponse.json({ error: "Email required" }, { status: 400 });
   }
+  await logOwnerAuthEvent("link_requested", { email });
 
   const emailRedacted = String(email).replace(/(.{2}).+(@.+)/, "$1***$2");
 
@@ -171,6 +173,7 @@ export async function POST(request: NextRequest) {
   try {
     const result = await sendMagicLink(email, listing.slug, token);
     if (result.ok) {
+      await logOwnerAuthEvent("link_sent", { slug: listing.slug, email });
       console.log(
         JSON.stringify({
           event: "owner_login_send_ok",
