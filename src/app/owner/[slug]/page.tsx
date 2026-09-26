@@ -115,6 +115,7 @@ export default async function OwnerPortalPage({ params }: Props) {
       <div className="mt-10">
         <GbpConnectCard
           slug={listing.slug}
+          listingId={String((listing as { id?: string }).id ?? "")}
           googlePlaceId={(listing as { google_place_id?: string | null }).google_place_id ?? null}
           gbpUrlOnFile={(listing as { gbp_url?: string | null }).gbp_url ?? null}
           primaryColor={canonical.primaryColor}

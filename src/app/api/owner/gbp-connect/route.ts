@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { verifyOwnerAccess } from "@/lib/auth";
 import { GBP_OWNER_MESSAGES, resolveGoogleBusinessProfileUrl } from "@/lib/gbp-connector";
+import { upgradeFeatureIdToChij } from "@/lib/gbp-chij-resolve";
 import { LISTINGS_TABLE, supabaseAdmin } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
 
-// claimant-edit-ux-stamp-v1 follow-up (Terry 2026-09-25, item 3): the fleet's single-door GBP writer,
-// ported to a site that had none. FEATURE-ID ONLY — this site is not in the R1 paste-time-resolve set,
-// so there is NO Places call here: resolveGoogleBusinessProfileUrl parses the link and follows Google
-// short-link redirects only. Owner-cookie + token + claimed gated; 409 already_linked; provenance row.
+// claimant-edit-ux-stamp-v1 follow-up (Terry 2026-09-25, item 3): the fleet's single-door GBP writer.
+// owner-funnel-recovery-p1p4-v1 P2 (2026-09-26): brought into the paste-time ChIJ class (see below).
+// Owner-cookie + token + claimed gated; 409 already_linked; provenance row.
 const purgeTag = revalidateTag as unknown as (tag: string, profile?: { expire: number }) => void;
 const HINT = " Tip: on Google Maps, open your business, tap Share, then Copy link, and paste that link here.";
 
@@ -32,21 +32,37 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: resolution.code, message: GBP_OWNER_MESSAGES[resolution.code] + HINT }, { status: 400 });
   }
 
+  // owner-funnel-recovery-p1p4-v1 P2: paste-time ChIJ upgrade (K288 / TDL #1256, K308 service-area + CID
+  // identity) — the canonical behaviour of the harness fleet. ONE owner-triggered Text Search only when the
+  // link resolved to a feature-id; a ChIJ is accepted only on a verified match; every refusal keeps the
+  // feature-id (connected, never NULL). Shared fleet-wide daily cap (lib/gbp-chij-resolve DAILY_CALL_CAP).
+  const chijUpgrade = await upgradeFeatureIdToChij({
+    placeId: resolution.placeId,
+    anchor: resolution.anchor,
+    listingId: listing.id,
+    listingSlug: listing.slug,
+    listingsTable: LISTINGS_TABLE,
+    placeIdColumn: "google_place_id",
+    vertical: process.env.BILLING_VERTICAL_SLUG ?? LISTINGS_TABLE.replace(/_listings$/, ""),
+    supabase: supabaseAdmin,
+  });
+  const effectivePlaceId = chijUpgrade.placeId;
+
   const { error: updateError, count } = await supabaseAdmin
     .from(LISTINGS_TABLE)
-    .update({ google_place_id: resolution.placeId, gbp_url: resolution.normalizedUrl }, { count: "exact" })
+    .update({ google_place_id: effectivePlaceId, gbp_url: resolution.normalizedUrl }, { count: "exact" })
     .eq("id", listing.id)
     .eq("owner_auth_token", listing.owner_auth_token);
   if (updateError || count !== 1) {
     const isUnique = updateError?.code === "23505" || /unique|duplicate key/i.test(updateError?.message || "");
     if (isUnique) {
-      const { data: existing } = await supabaseAdmin.from(LISTINGS_TABLE).select("id").eq("google_place_id", resolution.placeId).maybeSingle();
+      const { data: existing } = await supabaseAdmin.from(LISTINGS_TABLE).select("id").eq("google_place_id", effectivePlaceId).maybeSingle();
       await supabaseAdmin.from("place_id_collision_log").insert({
         source_table: LISTINGS_TABLE,
         vertical: process.env.BILLING_VERTICAL_SLUG ?? LISTINGS_TABLE.replace(/_listings$/, ""),
         attempting_listing_id: listing.id,
         existing_listing_id: (existing as { id?: string } | null)?.id ?? null,
-        place_id: resolution.placeId,
+        place_id: effectivePlaceId,
       }).then(() => {}, () => {});
       return NextResponse.json({
         ok: false,
@@ -64,12 +80,12 @@ export async function POST(request: NextRequest) {
     listing_table: LISTINGS_TABLE,
     listing_id: listing.id,
     listing_slug: listing.slug,
-    place_id: resolution.placeId,
+    place_id: effectivePlaceId,
     outcome: "success",
     caller: "owner",
-    authorization_ref: "provenance=owner_supplied (gbp-connect, feature-id only, TDL #1256)",
+    authorization_ref: "provenance=owner_supplied (gbp-connect, TDL #1256)",
     places_called: false,
-    detail: `gbp-connect resolve mode=${resolution.mode} chij=not_attempted(site not in R1 set)`,
+    detail: `gbp-connect resolve mode=${resolution.mode} chij=${chijUpgrade.outcome}`,
   }).then(() => {}, () => {});
 
   try {
@@ -79,5 +95,5 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("[owner/gbp-connect] cache invalidation failed", error instanceof Error ? error.name : "unknown");
   }
-  return NextResponse.json({ ok: true, placeId: resolution.placeId, gbpUrl: resolution.normalizedUrl, mode: resolution.mode, chij: "not_attempted" });
+  return NextResponse.json({ ok: true, placeId: effectivePlaceId, gbpUrl: resolution.normalizedUrl, mode: resolution.mode, chij: chijUpgrade.outcome });
 }

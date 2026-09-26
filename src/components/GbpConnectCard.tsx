@@ -2,17 +2,21 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { gbpConnectResult } from "@/lib/gbp-connect-result";
+import { REPASTE_HOLD } from "@/lib/gbp-repaste-hold";
 
 // claimant-edit-ux-stamp-v1 follow-up (item 3): the fleet's standard dashboard "Connect your Google
 // Business Profile" card, packaged for this site's server-rendered owner page. Posts to the single
-// GBP writer /api/owner/gbp-connect (feature-id only here — no Places call).
+// GBP writer /api/owner/gbp-connect (paste-time verified-ChIJ upgrade since owner-funnel-recovery P2).
 export default function GbpConnectCard({
   slug,
+  listingId,
   googlePlaceId,
   gbpUrlOnFile,
   primaryColor,
 }: {
   slug: string;
+  listingId: string;
   googlePlaceId: string | null;
   gbpUrlOnFile: string | null;
   primaryColor: string;
@@ -35,22 +39,19 @@ export default function GbpConnectCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug, gbpUrl }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || "We could not connect Google.");
-      setConnectedPlaceId(data.placeId);
-      setConnectedGbpUrl(data.gbpUrl || gbpUrl);
-      setEditingGbp(false);
-      setGbpUrl("");
-      // claimant-edit-ux-stamp-v1: honest result. This site stores the link's own id (no Places
-      // verification), so a Share link is connected but not review-capable.
-      setGbpResult(
-        typeof data.placeId === "string" && data.placeId.startsWith("ChIJ")
-          ? "Connected. Your Google rating can show on your listing."
-          : "Connected. Your Google profile is linked; showing Google reviews isn't available for this link yet.",
-      );
-      router.refresh();
-    } catch (error) {
-      setGbpResult(error instanceof Error ? error.message : "We could not connect Google.");
+      const data = await response.json().catch(() => null);
+      // owner-funnel-recovery P2: ONE honest outcome per paste (lib/gbp-connect-result.ts).
+      const result = gbpConnectResult(response.status, data);
+      setGbpResult(result.message);
+      if (response.ok && data?.ok !== false) {
+        setConnectedPlaceId(data.placeId);
+        setConnectedGbpUrl(data.gbpUrl || gbpUrl);
+        setEditingGbp(false);
+        setGbpUrl("");
+        router.refresh();
+      }
+    } catch {
+      setGbpResult("We could not connect Google. Nothing was changed — please try again.");
     } finally {
       setConnectingGbp(false);
     }
@@ -67,9 +68,11 @@ export default function GbpConnectCard({
             <form onSubmit={handleConnectGbp} className="space-y-3">
               <label htmlFor="gbp-url" className="block text-sm font-medium text-gray-700">Google Business Profile link</label>
               <div className="flex flex-col gap-2 sm:flex-row"><input id="gbp-url" type="url" required value={gbpUrl} onChange={(event) => setGbpUrl(event.target.value)} placeholder="https://maps.app.goo.gl/..." className="min-w-0 flex-1 rounded border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600" /><button type="submit" disabled={connectingGbp} className="rounded px-4 py-2 text-sm font-medium text-white disabled:opacity-50" style={{ backgroundColor: primaryColor }}>{connectingGbp ? "Connecting…" : "Connect Google"}</button></div>
-              {connectedGbpUrl && (
-                <p className="text-sm text-blue-700">A Google Business Profile link is on file — click Connect to verify it</p>
-              )}
+              {connectedGbpUrl && (REPASTE_HOLD.has(String(listingId)) ? (
+                <p className="text-sm text-gray-600">A Google Business Profile link is on file.</p>
+              ) : (
+                <p className="text-sm font-medium text-amber-700">Your Google link didn&rsquo;t connect. Please paste it again above and click Connect Google.</p>
+              ))}
             </form>
           </>
         ) : (
