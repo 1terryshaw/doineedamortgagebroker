@@ -16,9 +16,9 @@ const REASONS: Record<string, string> = {
     "Google doesn't list your business in its search results yet, so reviews can't be shown. Your profile stays linked.",
   refused_collision:
     "That Google listing is already linked to another business in our directory. Contact us and we'll sort it out.",
-  refused_rate_limited: "We couldn't verify the link with Google today. Paste your Share link again tomorrow.",
-  refused_unconfigured: "We couldn't verify the link with Google right now. Paste your Share link again later.",
-  error_places: "We couldn't verify the link with Google right now. Paste your Share link again later.",
+  refused_rate_limited: "We couldn't check the link with Google today. Paste your Share link again tomorrow.",
+  refused_unconfigured: "We couldn't check the link with Google right now. Paste your Share link again later.",
+  error_places: "We couldn't check the link with Google right now. Paste your Share link again later.",
 };
 const DEFAULT_REASON =
   "Your Google profile is linked. Showing Google reviews isn't available for this kind of link on this site yet.";
