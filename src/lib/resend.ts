@@ -61,13 +61,13 @@ export async function sendClaimEmail(
       from: AUTH_FROM,
       replyTo: AUTH_REPLY_TO,
       to: email,
-      subject: `Verify your claim on ${SITE_NAME}`,
+      subject: `Confirm your listing claim on ${SITE_NAME}`,
       html: `
-      <h2>Claim Your Listing on ${SITE_NAME}</h2>
+      <h2>Confirm your listing claim on ${SITE_NAME}</h2>
       <p>Click the link below to verify your ownership claim:</p>
       <p><a href="${verifyLink}" style="display:inline-block;padding:12px 24px;background:${canonical.primaryColor};color:white;text-decoration:none;border-radius:6px;">Verify Claim</a></p>
       <p>Or copy this link: ${verifyLink}</p>
-      <p style="color:#666;font-size:12px;">If you didn't request this, you can safely ignore this email.</p>
+      <p style="color:#666;font-size:12px;">You received this because this email address was entered on ${String(SITE_URL).replace(/^https?:\/\//, "").replace(/\/.*$/, "")}. If that wasn't you, ignore this email — nothing changes unless the link is used.</p><p style="color:#666;font-size:12px;">${SITE_NAME} · owner mail from Do I Need A Network · <a href="https://doineedanetwork.com" style="color:#666;">doineedanetwork.com</a></p>
     `,
     });
     if (error) return { ok: false, error: error.message };
