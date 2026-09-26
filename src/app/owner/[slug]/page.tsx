@@ -11,6 +11,7 @@ import OwnerLogoutButton from "@/components/OwnerLogoutButton";
 import OwnerLeads from "@/components/OwnerLeads";
 import GbpConnectCard from "@/components/GbpConnectCard";
 import NextStepCard from "@/components/NextStepCard";
+import SavedNotice from "@/components/SavedNotice";
 import { deriveNextStep } from "@/lib/owner-next-step";
 import { addressEditClass, addressEditAllowed } from "@/lib/owner-location-edit";
 import ReviewKit from "@/components/ReviewKit";
@@ -21,14 +22,16 @@ export const fetchCache = "force-no-store";
 
 interface Props {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 export const metadata: Metadata = {
   title: "Owner Dashboard",
 };
 
-export default async function OwnerPortalPage({ params }: Props) {
+export default async function OwnerPortalPage({ params, searchParams }: Props) {
   const { slug } = await params;
+  const saved = (await searchParams).saved === "1"; // owner-journey-friction-fix-v1
   const result = await verifyOwnerAccess(slug);
 
   if (!result) {
@@ -86,7 +89,8 @@ export default async function OwnerPortalPage({ params }: Props) {
 
       {/* owner-next-step-card-canary-v1: the one next action, directly under the header. */}
       <div className="space-y-6 mb-6">
-        <NextStepCard step={nextStep} />
+        {saved && <SavedNotice />}
+            <NextStepCard step={nextStep} />
         {reviewKit && <ReviewKit kit={reviewKit} slug={listing.slug} />}
       </div>
 
@@ -118,6 +122,7 @@ export default async function OwnerPortalPage({ params }: Props) {
           listingId={String((listing as { id?: string }).id ?? "")}
           googlePlaceId={(listing as { google_place_id?: string | null }).google_place_id ?? null}
           gbpUrlOnFile={(listing as { gbp_url?: string | null }).gbp_url ?? null}
+          googleRating={(listing as { google_rating?: number | null }).google_rating ?? null} // owner-journey-friction-fix-v1 B
           primaryColor={canonical.primaryColor}
         />
       </div>

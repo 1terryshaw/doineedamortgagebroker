@@ -14,12 +14,15 @@ export default function GbpConnectCard({
   googlePlaceId,
   gbpUrlOnFile,
   primaryColor,
+  googleRating = null,
 }: {
   slug: string;
   listingId: string;
   googlePlaceId: string | null;
   gbpUrlOnFile: string | null;
   primaryColor: string;
+  /** owner-journey-friction-fix-v1 B: stored google_rating (null = Google hasn't shared one). */
+  googleRating?: number | null;
 }) {
   const router = useRouter();
   const [gbpUrl, setGbpUrl] = useState("");
@@ -28,6 +31,9 @@ export default function GbpConnectCard({
   const [connectedPlaceId, setConnectedPlaceId] = useState<string | null>(googlePlaceId || null);
   const [connectedGbpUrl, setConnectedGbpUrl] = useState<string>(gbpUrlOnFile || "");
   const [editingGbp, setEditingGbp] = useState(false);
+  // owner-journey-friction-fix-v1 B (ruling 1): exactly three Google states, the same words on every owner screen.
+  const ratingShowing = googleRating != null;
+  const googleStatus = ratingShowing ? "Connected to Google — your rating is showing" : "Connected to Google — your rating will show once Google shares it";
 
   async function handleConnectGbp(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -64,7 +70,8 @@ export default function GbpConnectCard({
         {!connectedPlaceId ? (
           <>
             <h3 id="google-gbp-heading" className="font-semibold mb-2">Connect your Google Business Profile</h3>
-            <p className="text-sm text-gray-600 mb-4">Paste the HTTPS Google Maps or Business Profile share link for this listing. We only save a valid Google Place ID; reviews will not refresh automatically.</p>
+            <p data-google-status className="text-sm font-medium text-gray-800 mb-1">Not connected to Google yet</p>
+            <p className="text-sm text-gray-600 mb-4">On Google Maps, open your business, tap Share, then Copy link, and paste it here. We&apos;ll check the link matches your business on Google.</p>
             <form onSubmit={handleConnectGbp} className="space-y-3">
               <label htmlFor="gbp-url" className="block text-sm font-medium text-gray-700">Google Business Profile link</label>
               <div className="flex flex-col gap-2 sm:flex-row"><input id="gbp-url" type="url" required value={gbpUrl} onChange={(event) => setGbpUrl(event.target.value)} placeholder="https://maps.app.goo.gl/..." className="min-w-0 flex-1 rounded border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600" /><button type="submit" disabled={connectingGbp} className="rounded px-4 py-2 text-sm font-medium text-white disabled:opacity-50" style={{ backgroundColor: primaryColor }}>{connectingGbp ? "Connecting…" : "Connect Google"}</button></div>
@@ -77,18 +84,18 @@ export default function GbpConnectCard({
           </>
         ) : (
           <>
-            <h3 id="google-gbp-heading" className="font-semibold mb-2 text-green-700">✓ Google connected</h3>
+            <h3 id="google-gbp-heading" data-google-status className="font-semibold mb-2 text-green-700">{googleStatus}</h3>
             {connectedGbpUrl && (
               <p className="text-sm text-gray-600 mb-2 break-all">Linked profile:{" "}<a href={connectedGbpUrl} target="_blank" rel="noopener noreferrer" className="underline">{connectedGbpUrl}</a></p>
             )}
-            <p className="text-sm text-gray-600 mb-4">Once your Google rating is available it shows on your public listing, which earns the &ldquo;Reviews verified&rdquo; badge.</p>
+            {!ratingShowing && <p className="text-sm text-gray-600 mb-4">When Google shares your rating with us, your listing also shows the Reviews verified badge and your Google rating.</p>}
             {editingGbp ? (
               <form onSubmit={handleConnectGbp} className="space-y-3">
-                <label htmlFor="gbp-url" className="block text-sm font-medium text-gray-700">Replace Google Business Profile link</label>
-                <div className="flex flex-col gap-2 sm:flex-row"><input id="gbp-url" type="url" required value={gbpUrl} onChange={(event) => setGbpUrl(event.target.value)} placeholder="https://maps.app.goo.gl/..." className="min-w-0 flex-1 rounded border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600" /><button type="submit" disabled={connectingGbp} className="rounded px-4 py-2 text-sm font-medium text-white disabled:opacity-50" style={{ backgroundColor: primaryColor }}>{connectingGbp ? "Saving…" : "Replace"}</button><button type="button" onClick={() => { setEditingGbp(false); setGbpUrl(""); }} className="rounded px-4 py-2 text-sm font-medium text-gray-600 underline">Cancel</button></div>
+                <label htmlFor="gbp-url" className="block text-sm font-medium text-gray-700">New Google Business Profile link</label>
+                <div className="flex flex-col gap-2 sm:flex-row"><input id="gbp-url" type="url" required value={gbpUrl} onChange={(event) => setGbpUrl(event.target.value)} placeholder="https://maps.app.goo.gl/..." className="min-w-0 flex-1 rounded border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600" /><button type="submit" disabled={connectingGbp} className="rounded px-4 py-2 text-sm font-medium text-white disabled:opacity-50" style={{ backgroundColor: primaryColor }}>{connectingGbp ? "Connecting…" : "Connect Google"}</button><button type="button" onClick={() => { setEditingGbp(false); setGbpUrl(""); }} className="rounded px-4 py-2 text-sm font-medium text-gray-600 underline">Cancel</button></div>
               </form>
             ) : (
-              <button type="button" onClick={() => { setEditingGbp(true); setGbpUrl(connectedGbpUrl); }} className="text-sm font-medium underline" style={{ color: primaryColor }}>Edit / Replace link</button>
+              <button type="button" onClick={() => { setEditingGbp(true); setGbpUrl(connectedGbpUrl); }} className="text-sm font-medium underline" style={{ color: primaryColor }}>Change Google link</button>
             )}
           </>
         )}
