@@ -7,7 +7,11 @@ import { canonical } from "@/lib/vertical-canonical";
 // Gmail/nodemailer inquiry path — auth links are deliberately on the verified
 // auth@ sender for deliverability. baseUrl = SITE_URL (mortgage uses
 // NEXT_PUBLIC_SITE_URL, not the canonical's NEXT_PUBLIC_BASE_URL).
-const AUTH_FROM = "Smart Website Management <auth@smartwebsitemanagement.ca>";
+// owner-funnel-recovery-p1p4-v1 (2026-09-26): claim/login mail rides the owner-only transactional
+// domain (was the cold-shared smartwebsitemanagement.ca apex). AUTH_REPLY_TO = the previous From,
+// so reply routing is preserved exactly (doineedanetwork.com has no MX).
+const AUTH_FROM = "Smart Website Management <verify@doineedanetwork.com>";
+const AUTH_REPLY_TO = "auth@smartwebsitemanagement.ca";
 
 export type AuthSendResult = { ok: true; id: string } | { ok: false; error: string };
 
@@ -22,6 +26,7 @@ export async function sendMagicLink(
     const resend = new Resend(process.env.RESEND_API_KEY);
     const { data, error } = await resend.emails.send({
       from: AUTH_FROM,
+      replyTo: AUTH_REPLY_TO,
       to: email,
       subject: `Your login link for ${SITE_NAME}`,
       html: `
@@ -54,6 +59,7 @@ export async function sendClaimEmail(
     const resend = new Resend(process.env.RESEND_API_KEY);
     const { data, error } = await resend.emails.send({
       from: AUTH_FROM,
+      replyTo: AUTH_REPLY_TO,
       to: email,
       subject: `Verify your claim on ${SITE_NAME}`,
       html: `
