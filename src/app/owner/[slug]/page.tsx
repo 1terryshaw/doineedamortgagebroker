@@ -10,6 +10,11 @@ import ListingStrengthCard from "@/components/ListingStrengthCard";
 import OwnerLogoutButton from "@/components/OwnerLogoutButton";
 import OwnerLeads from "@/components/OwnerLeads";
 import GbpConnectCard from "@/components/GbpConnectCard";
+import NextStepCard from "@/components/NextStepCard";
+import { deriveNextStep } from "@/lib/owner-next-step";
+import { addressEditClass, addressEditAllowed } from "@/lib/owner-location-edit";
+import ReviewKit from "@/components/ReviewKit";
+import { buildReviewKit, reviewKitPlaceId } from "@/lib/review-kit";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -34,6 +39,33 @@ export default async function OwnerPortalPage({ params }: Props) {
   const { photos } = await listPhotosForListing(result.listing.id);
   const health = computeListingHealth(result.listing, photos.length);
 
+  // owner-next-step-card-canary-v1: one action, derived read-only from this row.
+  const row = result.listing as Record<string, unknown>;
+  // owner-canary-fixes-and-review-kit-v1: the review kit, for a Google-connected (ChIJ) row only.
+  const kitPlaceId = reviewKitPlaceId(row.google_place_id as string | null);
+  const reviewKit = kitPlaceId ? buildReviewKit(kitPlaceId) : null;
+  const nextStep = deriveNextStep(
+    {
+      slug: listing.slug,
+      phone: row.phone as string | null,
+      website: row.website as string | null,
+      hours_json: row.hours_json,
+      // mortgage_listings has no `description` column: the editor's "Full Description" is stored in `bio`
+      // (app/api/owner/update, TDL #604).
+      description: row.bio as string | null,
+      address: row.address as string | null,
+      show_address: row.show_address as boolean | null,
+      google_place_id: row.google_place_id as string | null,
+      google_review_count: row.google_review_count as number | null,
+    },
+    photos.length,
+    {
+      addressEditable: addressEditAllowed(await addressEditClass(row.source as string | null)),
+      photosSupported: true,
+      reviewKit: !!reviewKit,
+    },
+  );
+
   // Owner leads (replaces the deprecated /dashboard inquiries view, TDL #607).
   const { data: leads } = await supabaseAdmin
     .from("mortgage_inquiries")
@@ -50,6 +82,12 @@ export default async function OwnerPortalPage({ params }: Props) {
           <h1 className="text-2xl font-bold text-[#1B2A4A]">{listing.name}</h1>
         </div>
         <OwnerLogoutButton />
+      </div>
+
+      {/* owner-next-step-card-canary-v1: the one next action, directly under the header. */}
+      <div className="space-y-6 mb-6">
+        <NextStepCard step={nextStep} />
+        {reviewKit && <ReviewKit kit={reviewKit} slug={listing.slug} />}
       </div>
 
       <ListingStrengthCard

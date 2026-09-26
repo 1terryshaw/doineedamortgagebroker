@@ -3,7 +3,7 @@ import GbpStatusCard from "@/components/owner-edit/GbpStatusCard";
 import AddressFields from "@/components/owner-edit/AddressFields";
 import type { OwnerGbpStatus } from "@/lib/owner-gbp-status";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CANADIAN_PROVINCES, US_STATES } from "@/lib/provinces";
 import { canonical } from "@/lib/vertical-canonical";
@@ -119,11 +119,32 @@ export default function OwnerEditForm({
   const [photos, setPhotos] = useState<ListingPhoto[]>(initialPhotos);
   const [logo, setLogo] = useState<ListingPhoto | null>(initialLogo);
   const [heroUrl, setHeroUrl] = useState<string | null>(listing.hero_image_url ?? null);
+  // Hours are written only when the owner changed them in this session, so an untouched
+  // save never rewrites (or invents days for) whatever shape is stored.
+  const [hoursTouched, setHoursTouched] = useState(false);
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
 
   const hasMoreDetails = !!form.hours_json || !!logo;
   const [moreOpen, setMoreOpen] = useState(hasMoreDetails);
+
+  // owner-next-step-card-canary-v1: the dashboard's "Your next step" card deep-links to a
+  // field (#owner-phone, #owner-hours, ...). Hours sit in the collapsed section, so open it first.
+  const [hashTarget, setHashTarget] = useState<string | null>(null);
+  useEffect(() => {
+    const id = window.location.hash.slice(1);
+    if (!id) return;
+    if (id === "owner-hours") setMoreOpen(true);
+    setHashTarget(id);
+  }, []);
+  useEffect(() => {
+    if (!hashTarget) return;
+    const el = document.getElementById(hashTarget);
+    if (!el) return;
+    el.scrollIntoView({ block: "center" });
+    if (el.matches("input, textarea, select")) el.focus({ preventScroll: true });
+    setHashTarget(null); // once — later "more details" toggles must not re-scroll
+  }, [hashTarget, moreOpen]);
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -146,7 +167,7 @@ export default function OwnerEditForm({
       website: form.website ? normalizeUrl(form.website) : "",
       city: form.city,
       province_state: form.province_state,
-      hours_json: form.hours_json,
+      ...(hoursTouched ? { hours_json: form.hours_json } : {}),
       services: form.services,
       service_area: form.service_area,
       ...(hasShowAddress ? { show_address: form.show_address } : {}),
@@ -222,13 +243,13 @@ export default function OwnerEditForm({
         </div>
         <div id="description" className="scroll-mt-20">
           <label className="block text-sm font-medium text-gray-700 mb-1">Full Description</label>
-          <textarea rows={5} value={form.description} onChange={(e) => update("description", e.target.value)}
+          <textarea id="owner-description" rows={5} value={form.description} onChange={(e) => update("description", e.target.value)}
             className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-            <input type="tel" value={form.phone} onChange={(e) => update("phone", e.target.value)}
+            <input id="owner-phone" type="tel" value={form.phone} onChange={(e) => update("phone", e.target.value)}
               className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
@@ -239,7 +260,7 @@ export default function OwnerEditForm({
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Website</label>
-          <input type="text" value={form.website} onChange={(e) => update("website", e.target.value)}
+          <input id="owner-website" type="text" value={form.website} onChange={(e) => update("website", e.target.value)}
             placeholder="www.example.com"
             className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
@@ -297,13 +318,15 @@ export default function OwnerEditForm({
         <h2 className="text-lg font-semibold">Boost your listing</h2>
 
         <div id="photos" className="scroll-mt-20">
-          <PhotoUploader
-            slug={listing.slug}
-            photos={photos}
-            onUploaded={(p) => setPhotos((prev) => [...prev, p])}
-            onDeleted={(id) => setPhotos((prev) => prev.filter((x) => x.id !== id))}
-            max={photoLimitForTier(listing.tier || listing.subscription_tier)}
-          />
+          <div id="owner-photos">
+            <PhotoUploader
+              slug={listing.slug}
+              photos={photos}
+              onUploaded={(p) => setPhotos((prev) => [...prev, p])}
+              onDeleted={(id) => setPhotos((prev) => prev.filter((x) => x.id !== id))}
+              max={photoLimitForTier(listing.tier || listing.subscription_tier)}
+            />
+          </div>
         </div>
 
         {can(listing.tier || listing.subscription_tier, "reviews_display") && (
@@ -347,10 +370,15 @@ export default function OwnerEditForm({
 
         {moreOpen && (
           <div className="space-y-6 mt-4">
-            <HoursEditor
-              value={form.hours_json}
-              onChange={(v) => update("hours_json", v)}
-            />
+            <div id="owner-hours">
+              <HoursEditor
+                value={form.hours_json}
+                onChange={(v) => {
+                  setHoursTouched(true);
+                  update("hours_json", v);
+                }}
+              />
+            </div>
 
             <LogoUploader
               slug={listing.slug}
