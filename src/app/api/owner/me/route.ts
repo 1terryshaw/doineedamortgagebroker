@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getAuthFromCookies, setAuthCookie } from "@/lib/auth";
+import { setAuthCookie, getActiveOwnerAuth } from "@/lib/auth";
 import { touchOwnerSession } from "@/lib/owner-events";
 import { supabaseAdmin, LISTINGS_TABLE } from "@/lib/supabase-admin";
 
@@ -12,7 +12,7 @@ const NO_CACHE_HEADERS = {
 
 export async function GET() {
   const cookieStore = await cookies();
-  const auth = getAuthFromCookies(cookieStore);
+  const auth = await getActiveOwnerAuth(cookieStore);
 
   if (!auth) {
     return NextResponse.json({ authenticated: false }, { headers: NO_CACHE_HEADERS });

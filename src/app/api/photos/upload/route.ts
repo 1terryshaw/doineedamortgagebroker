@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { randomUUID } from "crypto";
 import sharp from "sharp";
 import { supabaseAdmin, LISTINGS_TABLE } from "@/lib/supabase-admin";
-import { getAuthFromCookies } from "@/lib/auth";
+import { getActiveOwnerAuth } from "@/lib/auth";
 import { canonical } from "@/lib/vertical-canonical";
 import {
   ACCEPTED_MIME,
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
 
   // Owner-token cookie auth (TDL #624): the cookie scopes to a single listing
   // (slug:token); we authorize against its owner_auth_token.
-  const auth = getAuthFromCookies(await cookies());
+  const auth = await getActiveOwnerAuth(await cookies());
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

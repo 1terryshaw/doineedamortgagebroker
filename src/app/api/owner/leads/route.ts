@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getAuthFromCookies } from "@/lib/auth";
+import { getActiveOwnerAuth } from "@/lib/auth";
 import { supabaseAdmin, LISTINGS_TABLE } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 // (listing_id = uuid), NOT the canonical's `leads_forwarded` composite-key table.
 export async function GET() {
   const cookieStore = await cookies();
-  const auth = getAuthFromCookies(cookieStore);
+  const auth = await getActiveOwnerAuth(cookieStore);
 
   if (!auth) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });

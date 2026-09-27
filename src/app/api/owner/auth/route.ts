@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin, LISTINGS_TABLE } from "@/lib/supabase-admin";
 import { setAuthCookie } from "@/lib/auth";
 import { SITE_URL } from "@/lib/constants";
+import { isOwnerSessionRevoked } from "@/lib/owner-session-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,10 @@ export async function GET(request: NextRequest) {
     .single();
 
   if (error || !listing || listing.owner_auth_token !== token) {
+    return NextResponse.redirect(`${SITE_URL}/owner/login?error=invalid`);
+  }
+  // owner-auth-hardening: a server-side-revoked session never gets a cookie here.
+  if (await isOwnerSessionRevoked(token, slug)) {
     return NextResponse.redirect(`${SITE_URL}/owner/login?error=invalid`);
   }
 

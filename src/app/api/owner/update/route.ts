@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { supabaseAdmin, LISTINGS_TABLE } from "@/lib/supabase-admin";
-import { getAuthFromCookies } from "@/lib/auth";
+import { getActiveOwnerAuth } from "@/lib/auth";
 import { sanitizeExtras, EXTRA_UPDATE_FIELDS } from "@/lib/listing-extras";
 import { planOwnerLocationEdit } from "@/lib/owner-location-edit";
 import { BUCKET } from "@/lib/owner-form-bucket";
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
 
   // Owner-token cookie auth (TDL #624): the cookie's slug must match the target
   // and its token must match the listing's owner_auth_token.
-  const auth = getAuthFromCookies(await cookies());
+  const auth = await getActiveOwnerAuth(await cookies());
   if (!auth || auth.slug !== slug) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { randomUUID } from "crypto";
 import sharp from "sharp";
 import { supabaseAdmin, LISTINGS_TABLE } from "@/lib/supabase-admin";
-import { getAuthFromCookies } from "@/lib/auth";
+import { getActiveOwnerAuth } from "@/lib/auth";
 import { PHOTO_BUCKET, VERTICAL_KEY, publicUrlFor } from "@/lib/listing-photos";
 import { can } from "@/lib/tier-capabilities";
 
@@ -21,7 +21,7 @@ interface AuthedListing {
 
 // Owner-token cookie auth (TDL #624) — the cookie scopes to a single listing.
 async function authListing(): Promise<AuthedListing | null> {
-  const auth = getAuthFromCookies(await cookies());
+  const auth = await getActiveOwnerAuth(await cookies());
   if (!auth) return null;
   const { data: listing } = await supabaseAdmin
     .from(LISTINGS_TABLE)

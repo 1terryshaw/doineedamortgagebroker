@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { supabaseAdmin, LISTINGS_TABLE } from "@/lib/supabase-admin";
 import { canonical } from "@/lib/vertical-canonical";
+import { isOwnerSessionRevoked, withoutOwnerSecrets } from "@/lib/owner-session-guard";
 
 // Owner-token cookie auth (TDL #624 — ported from doineedanaccountant lib/auth.ts).
 // Cookie value is `${slug}:${token}`; the token is the listing's owner_auth_token.
@@ -40,6 +41,18 @@ export function getAuthFromCookies(
   return { slug, token };
 }
 
+// owner-auth-hardening-and-edit-log-v1: THE cookie gate for owner routes that match the token
+// themselves. getAuthFromCookies only parses the cookie; this also refuses a session revoked
+// server-side (owner_session_meta.revoked_at). Protected owner routes use this, never the parser.
+export async function getActiveOwnerAuth(
+  cookieStore: Awaited<ReturnType<typeof cookies>>
+): Promise<{ slug: string; token: string } | null> {
+  const auth = getAuthFromCookies(cookieStore);
+  if (!auth) return null;
+  if (await isOwnerSessionRevoked(auth.token, auth.slug)) return null;
+  return auth;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function verifyOwnerAccess(slug: string): Promise<{ listing: any } | null> {
   const cookieStore = await cookies();
@@ -55,7 +68,9 @@ export async function verifyOwnerAccess(slug: string): Promise<{ listing: any } 
     .single();
 
   if (error || !listing) return null;
-  return { listing };
+  // owner-auth-hardening: a server-side-revoked session is refused on every owner surface.
+  if (await isOwnerSessionRevoked(auth.token, slug)) return null;
+  return { listing: withoutOwnerSecrets(listing) };
 }
 
 export function clearAuthCookie(response: NextResponse): void {

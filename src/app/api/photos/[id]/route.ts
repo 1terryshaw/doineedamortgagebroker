@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { supabaseAdmin, LISTINGS_TABLE } from "@/lib/supabase-admin";
-import { getAuthFromCookies } from "@/lib/auth";
+import { getActiveOwnerAuth } from "@/lib/auth";
 import {
   PHOTO_BUCKET,
   VERTICAL_KEY,
@@ -22,7 +22,7 @@ export async function DELETE(
 
   // Owner-token cookie auth (TDL #624): resolve the cookie's listing, then
   // confirm the photo belongs to it.
-  const auth = getAuthFromCookies(await cookies());
+  const auth = await getActiveOwnerAuth(await cookies());
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
