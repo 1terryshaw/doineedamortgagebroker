@@ -70,7 +70,7 @@ export default function LoginForm() {
       </button>
       <p className="text-sm text-gray-600 text-center" data-login-claim>
         Haven&apos;t claimed your listing?{" "}
-        <Link href="/claim" className="font-medium underline" style={{ color: canonical.primaryColor }}>
+        <Link href="/claim" className="font-medium underline max-md:py-3.5" style={{ color: canonical.primaryColor }}>
           Claim it
         </Link>
       </p>
