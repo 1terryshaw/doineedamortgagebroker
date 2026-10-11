@@ -10,6 +10,7 @@ import {
 import { shouldPitch, buildClaimPitchEmail } from "@/lib/claim-pitch";
 import { isSuppressed } from "@/lib/suppression";
 import { recordDelivery } from "@/lib/inquiry-delivery";
+import { SITE_URL } from "@/lib/constants";
 
 // Manual-bridge queue for inquiries to listings with no deliverable email.
 const ADMIN_EMAIL = "terry@doineedapro.com";
@@ -186,6 +187,13 @@ export async function POST(request: NextRequest) {
           inquirer_phone: phone || "Not provided",
           mortgage_type: mortgage_type || "Not specified",
           message: message || "No message provided",
+          // TDL #1296: the stored inquiry_notification template uses these names; without them the broker
+          // received raw {{placeholders}} and no sender contact details.
+          sender_name: name,
+          sender_email: email,
+          sender_phone: phone || "Not provided",
+          loan_type: mortgage_type || "Not specified",
+          dashboard_url: `${SITE_URL}/owner/login`,
         };
         const html = renderTemplate(notificationTemplate.html_body, templateVars);
         const subject = renderTemplate(notificationTemplate.subject, templateVars);
@@ -229,6 +237,8 @@ export async function POST(request: NextRequest) {
           inquirer_name: name,
           broker_name: listing!.name,
           mortgage_type: mortgage_type || "Not specified",
+          sender_name: name,
+          loan_type: mortgage_type || "Not specified",
         };
         const html = renderTemplate(confirmationTemplate.html_body, confirmVars);
         const subject = renderTemplate(confirmationTemplate.subject, confirmVars);
