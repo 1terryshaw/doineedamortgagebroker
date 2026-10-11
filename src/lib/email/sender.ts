@@ -53,6 +53,8 @@ export async function sendEmail({
       ...(text ? { text } : {}),
     });
     if (sendError) throw new Error(sendError.message);
+    // TDL #1296: a send only counts as delivered when the provider returned a message id.
+    if (!data?.id) throw new Error("provider returned no message id");
     console.log("[EMAIL DEBUG] resend send succeeded", {
       id: data?.id,
     });
@@ -62,13 +64,13 @@ export async function sendEmail({
       to_email: to,
       subject,
       status: "sent",
-      metadata: metadata || {},
+      metadata: { ...(metadata || {}), provider_message_id: data.id },
     });
     if (logError) {
       console.error("[EMAIL DEBUG] Failed to log sent email to DB:", logError);
     }
 
-    return { success: true };
+    return { success: true as const, id: data.id as string, error: null as string | null };
   } catch (error) {
     console.error("[EMAIL DEBUG] sendMail FAILED with error:", error);
     const errorMessage =
@@ -90,7 +92,7 @@ export async function sendEmail({
       console.error("[EMAIL DEBUG] Failed to log failed email to DB:", logError);
     }
 
-    return { success: false, error: errorMessage };
+    return { success: false as const, id: null as string | null, error: errorMessage };
   }
 }
 

@@ -9,6 +9,7 @@ import {
 } from "@/lib/inquiry-guard";
 import { shouldPitch, buildClaimPitchEmail } from "@/lib/claim-pitch";
 import { isSuppressed } from "@/lib/suppression";
+import { recordDelivery } from "@/lib/inquiry-delivery";
 
 // Manual-bridge queue for inquiries to listings with no deliverable email.
 const ADMIN_EMAIL = "terry@doineedapro.com";
@@ -89,6 +90,7 @@ export async function POST(request: NextRequest) {
     }
 
     // tdl455canary / SMOKE_TEST: skip real dispatch for test traffic; the disposition row still persists.
+    const testPrefix = (listing?.slug || "").startsWith("zz-test-") ? "[TEST] " : "";
     const smoke = /tdl455canary/i.test(email || "") || process.env.SMOKE_TEST === "1";
 
     // Quarantined spam: stored, never forwarded, never notified.
@@ -99,16 +101,25 @@ export async function POST(request: NextRequest) {
     // No deliverable address: surface to the admin manual-bridge queue, do not forward.
     if (status === "needs_bridging") {
       if (!smoke) {
-        await sendEmail({
+        const bridgeRes = await sendEmail({
           to: ADMIN_EMAIL,
-          subject: `[needs_bridging] inquiry for ${listing?.name || "unknown listing"}`,
+          subject: `${testPrefix}[needs_bridging] inquiry for ${listing?.name || "unknown listing"}`,
           html: `<p>An inquiry was received for a listing with no deliverable email (needs manual bridging).</p>
                  <p><strong>From:</strong> ${name} (${email}${phone ? `, ${phone}` : ""})</p>
                  <p><strong>Listing:</strong> ${listing?.name || listing_id}</p>
                  <p><strong>Message:</strong> ${message || "(none)"}</p>`,
           templateName: "inquiry_needs_bridging",
           metadata: { inquiry_id: inquiry.id, listing_id },
-        }).catch(() => {});
+        });
+        // TDL #1296: record whether the manual-bridge notice actually went out.
+        await recordDelivery({
+          inquiryId: inquiry.id,
+          slug: listing?.slug || "",
+          forwardTo: null,
+          status: bridgeRes.success ? "needs_bridging" : "failed",
+          messageId: bridgeRes.id,
+          error: bridgeRes.error,
+        });
       }
       return NextResponse.json({ success: true, id: inquiry.id, forwarded: false });
     }
@@ -117,6 +128,7 @@ export async function POST(request: NextRequest) {
     const forwardTo = fwdEmail!;
     const caslReady = !!(process.env.CASL_POSTAL_ADDRESS || "").trim();
     let pitched = false;
+    let notifyRes: { success: boolean; id: string | null; error: string | null } | null = null;
 
     if (!smoke) {
       // TDL #472 Lead-to-Claim: pitch an unclaimed + non-paying + not-recently-pitched +
@@ -135,7 +147,7 @@ export async function POST(request: NextRequest) {
           leadId: inquiry.id,
         });
         if (pitch) {
-          await sendEmail({
+          notifyRes = await sendEmail({
             to: forwardTo,
             subject: pitch.subject,
             html: pitch.html,
@@ -143,7 +155,7 @@ export async function POST(request: NextRequest) {
             headers: pitch.headers,
             templateName: "claim_pitch_forward",
             metadata: { inquiry_id: inquiry.id, listing_id },
-          }).catch(() => {});
+          });
           pitched = true;
           await supabase
             .from("mortgage_listings")
@@ -177,14 +189,25 @@ export async function POST(request: NextRequest) {
         };
         const html = renderTemplate(notificationTemplate.html_body, templateVars);
         const subject = renderTemplate(notificationTemplate.subject, templateVars);
-        await sendEmail({
+        notifyRes = await sendEmail({
           to: forwardTo,
-          subject,
+          subject: `${testPrefix}${subject}`,
           html,
           templateName: "inquiry_notification",
           metadata: { inquiry_id: inquiry.id, listing_id },
-        }).catch(() => {});
+        });
       }
+
+      // TDL #1296: record the lead-forward outcome on the ledger row; [INQUIRY-ALERT] the operator on failure.
+      await recordDelivery({
+        inquiryId: inquiry.id,
+        slug: listing!.slug,
+        forwardTo,
+        ownerEmail: listing!.owner_email,
+        status: notifyRes?.success ? "sent" : "failed",
+        messageId: notifyRes?.id,
+        error: notifyRes ? notifyRes.error : "inquiry_notification template missing",
+      });
 
       // Branded confirmation to the inquirer.
       const { data: confirmationTemplate, error: confirmationTemplateError } =
@@ -209,13 +232,15 @@ export async function POST(request: NextRequest) {
         };
         const html = renderTemplate(confirmationTemplate.html_body, confirmVars);
         const subject = renderTemplate(confirmationTemplate.subject, confirmVars);
-        await sendEmail({
+        const confirmRes = await sendEmail({
           to: email,
-          subject,
+          subject: `${testPrefix}${subject}`,
           html,
           templateName: "inquiry_confirmation",
           metadata: { inquiry_id: inquiry.id, listing_id },
-        }).catch(() => {});
+        });
+        // The visitor copy is non-critical; a failure is logged (and in mortgage_email_log), never swallowed.
+        if (!confirmRes.success) console.error("[inquiry] confirmation send failed", inquiry.id, confirmRes.error);
       }
     }
 
