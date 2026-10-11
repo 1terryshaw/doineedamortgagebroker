@@ -3,6 +3,7 @@ import { supabaseAdmin, LISTINGS_TABLE } from "@/lib/supabase-admin";
 import { setAuthCookie } from "@/lib/auth";
 import { SITE_URL } from "@/lib/constants";
 import { canRepublishOnClaim } from "@/lib/republish-guard";
+import { isNameEmailRefusal, withNameEmailReason } from "@/lib/name-email-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -103,7 +104,25 @@ export async function POST(request: NextRequest) {
     update.deserve_reason = null;
     update.deserved_at = null;
   }
-  await supabaseAdmin.from(LISTINGS_TABLE).update(update).eq("id", listing.id);
+  // name-guard-followthrough-v1 — TDL #1047 / K36 fail-closed. This write used to be awaited
+  // unchecked, so a refused or failed claim write (incl. the K395 name-email guard, 23514)
+  // still set the owner cookie and landed the owner on the dashboard. No claim write, no session.
+  const { error: claimErr, count: claimCount } = await supabaseAdmin
+    .from(LISTINGS_TABLE)
+    .update(update, { count: "exact" })
+    .eq("id", listing.id);
+  if (claimErr) {
+    if (isNameEmailRefusal(claimErr)) {
+      console.error(`[claim/verify] claim write REFUSED by the name-email guard (EMPIRE_NAME_EMAIL_PERSONAL)`);
+      return NextResponse.redirect(withNameEmailReason(`${SITE_URL}/claim/error`), 303);
+    }
+    console.error(`[claim/verify] claim write FAILED for ${slug}: ${claimErr.message}`);
+    return NextResponse.redirect(`${SITE_URL}/claim/error`, 303);
+  }
+  if ((claimCount ?? 0) === 0) {
+    console.error(`[claim/verify] claim write matched 0 rows for ${slug} (id=${listing.id})`);
+    return NextResponse.redirect(`${SITE_URL}/claim/error`, 303);
+  }
 
   const response = NextResponse.redirect(`${SITE_URL}/owner/${slug}`, 303);
   setAuthCookie(response, token, slug);
