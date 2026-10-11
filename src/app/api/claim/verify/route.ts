@@ -3,7 +3,7 @@ import { supabaseAdmin, LISTINGS_TABLE } from "@/lib/supabase-admin";
 import { setAuthCookie } from "@/lib/auth";
 import { SITE_URL } from "@/lib/constants";
 import { canRepublishOnClaim } from "@/lib/republish-guard";
-import { isNameEmailRefusal, withNameEmailReason } from "@/lib/name-email-guard";
+import { isNameEmailRefusal, withNameEmailReason, nameEmailClassForRow } from "@/lib/name-email-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
   // subject, so a de-served SEEDED person-row republishes here. canRepublishOnClaim
   // fails CLOSED: only NULL / person-consent-curable deserve_reasons publish;
   // RESTRICTED-source and nameless rows stay down (consent ≠ SOURCE cure, #1014).
-  if (canRepublishOnClaim(listing)) {
+  if (canRepublishOnClaim({ ...listing, name_email_class: await nameEmailClassForRow(supabaseAdmin, listing) })) {
     update.is_published = true;
     update.deserve_reason = null;
     update.deserved_at = null;
