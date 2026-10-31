@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { UK_TABLE } from "@/lib/uk-mortgage";
 import { sendUkClaimEmail } from "@/lib/uk-claim-email";
+import { checkUkClaimRate, alertUkClaimFailure } from "@/lib/uk-claim-rate";
 
 export const dynamic = "force-dynamic";
 
@@ -40,11 +41,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const token = randomUUID();
-    const emailRedacted = String(email).replace(/(.{2}).+(@.+)/, "$1***$2");
-
     // Smoke suppression: never dispatch real mail for test traffic.
     const suppressed = process.env.SMOKE_TEST === "1" || /ukclaimcanary|tdl455canary/i.test(String(email));
+
+    // TDL #1372 (stream10-held-identity-safety-v1-fixup): D8 claim limiter (3/email/h, 10/email/day, 20/IP/h).
+    // A throttled request gets the byte-identical success body (no enumeration signal). Errors FAIL CLOSED (503)
+    // and raise a sentinel alert — no send, no token write.
+    const rate = await checkUkClaimRate(email, request);
+    if (rate.error) {
+      console.error(JSON.stringify({ event: "uk_claim_ratelimit_error", err: rate.error }));
+      await alertUkClaimFailure(`UK claim rate limiter error on ${UK_TABLE}`, {
+        slug,
+        error: rate.error,
+        impact: "limiter failed CLOSED — UK claim refused (503) until fixed",
+      });
+      return NextResponse.json(
+        { success: false, error: "temporarily_unavailable", userMessage: "Claiming is temporarily unavailable. Please try again in a few minutes." },
+        { status: 503 }
+      );
+    } else if (!rate.allowed) {
+      console.log(JSON.stringify({ event: "uk_claim_throttled", slug }));
+      return NextResponse.json({ success: true, suppressed });
+    }
+
+    const token = randomUUID();
+    const emailRedacted = String(email).replace(/(.{2}).+(@.+)/, "$1***$2");
 
     if (!suppressed) {
       // Send the verification email FIRST so a failed send leaves no orphan token.
