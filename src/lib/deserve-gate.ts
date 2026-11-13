@@ -91,7 +91,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SITE_NAME } from "@/lib/constants";
 
-export const DESERVE_GATE_VERSION = "1.1.0";
+export const DESERVE_GATE_VERSION = "1.1.1";
 
 // Matches EXACTLY this repo's listing-detail route: /listing/<slug>. Nothing else on the
 // site is gated — not /uk/directory/<slug> (separate table, separately gated), not the
@@ -152,6 +152,12 @@ export async function deserveGate(req: NextRequest): Promise<NextResponse | null
 
   let deserved = false;
   try {
+    // ~2s AbortSignal: middleware wall clock is ~25s; an unbounded RPC under DB
+    // contention held the whole request until the platform kill. Timeout → fail open
+    // (null) — the page getListing() still 404s de-served rows.
+    // This file is the ONLY adapted copy in the fleet (route /listing/<slug>, no
+    // vertical.config.ts) — NOT byte-identical to empire-policy/deserve_gate.ts.
+    // Sync the AbortSignal into the canonical before any fleet fan-out (proposal only).
     const res = await fetch(`${url}/rest/v1/rpc/is_deserved_listing`, {
       method: "POST",
       headers: {
@@ -161,11 +167,12 @@ export async function deserveGate(req: NextRequest): Promise<NextResponse | null
       },
       body: JSON.stringify({ p_table: LISTINGS_TABLE, p_slug: slug }),
       cache: "no-store",
+      signal: AbortSignal.timeout(2000),
     });
     if (!res.ok) return null; // fail open
     deserved = (await res.json()) === true;
   } catch {
-    return null; // fail open
+    return null; // fail open (includes AbortError)
   }
 
   if (!deserved) return null;

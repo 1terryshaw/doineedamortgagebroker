@@ -1,11 +1,14 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import {
+  fallbackDirectoryRegions,
   getDirectoryRegions,
   getFilteredListingsPaged,
   getListingsCount,
   getSpecializations,
   specializationsEnabled,
+  type DirectoryListing,
+  type DirectoryRegion,
 } from "@/lib/directory-hub";
 import SearchBar from "@/components/SearchBar";
 import Pagination from "@/components/Pagination";
@@ -15,6 +18,8 @@ import { SITE_URL } from "@/lib/constants";
 import { getUkAllTownHubs, getUkCounties } from "@/lib/uk-mortgage";
 import { selfAlternates } from "@/lib/seo-alternates";
 
+// Soft-shell + bounded queries: a 57014 must not 500 or hang ~25s. Root layout
+// still forces dynamic via headers(); keep force-dynamic explicit for searchParams.
 export const dynamic = "force-dynamic";
 
 // Country-aware via JURISDICTION (keyed on NEXT_PUBLIC_COUNTRY) + SITE_URL
@@ -62,6 +67,52 @@ type SP = {
   page?: string;
 };
 
+function DirectorySoftShell({
+  regions,
+  specializations,
+  sp,
+}: {
+  regions: DirectoryRegion[];
+  specializations: Awaited<ReturnType<typeof getSpecializations>>;
+  sp: SP;
+}) {
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    name: "Mortgage Broker Directory",
+    description: PAGE_DESC,
+    url: DIRECTORY_URL,
+  };
+  return (
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <header className="mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">
+          Find a Mortgage Broker
+        </h1>
+        <p className="mt-2 text-gray-600">
+          Listings are temporarily unavailable. Please refresh in a moment.
+        </p>
+      </header>
+      <SearchBar
+        regions={regions}
+        specializations={specializations}
+        ukCounties={[]}
+        ukTowns={[]}
+      />
+      {sp.region && (
+        <p className="mt-4 text-sm text-gray-500">
+          Filter: {sp.region}
+          {sp.city ? ` / ${sp.city}` : ""}
+        </p>
+      )}
+    </main>
+  );
+}
+
 export default async function DirectoryPage({
   searchParams,
 }: {
@@ -72,40 +123,65 @@ export default async function DirectoryPage({
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
   const isFiltered = !!(sp.region || sp.city || sp.type || sp.q);
 
-  const [regions, specsEnabled, paged, totalCount, ukResults] = await Promise.all([
-    getDirectoryRegions(),
-    specializationsEnabled(),
-    getFilteredListingsPaged({
-      region: sp.region,
-      citySlug: sp.city,
-      specSlug: sp.type,
-      query: sp.q,
-      page,
-    }),
-    isFiltered ? Promise.resolve(null) : getListingsCount(),
-    allowUkDiscovery
-      ? Promise.allSettled([getUkCounties(), getUkAllTownHubs()])
-      : Promise.resolve(null),
-  ]);
+  let regions: DirectoryRegion[] = fallbackDirectoryRegions();
+  let specsEnabled = false;
+  let listings: DirectoryListing[] = [];
+  let hasMore = false;
+  let totalCount: number | null = null;
+  let ukCounties: Array<{ slug: string; name: string; count: number }> = [];
+  let ukTowns: Array<{ countySlug: string; slug: string; name: string }> = [];
+  let specializations: Awaited<ReturnType<typeof getSpecializations>> = [];
 
-  const countyStats = ukResults?.[0]?.status === "fulfilled" ? ukResults[0].value : [];
-  const townStats = ukResults?.[1]?.status === "fulfilled" ? ukResults[1].value : [];
-  const ukCounties = countyStats.map((county) => ({
-    slug: county.county_slug,
-    name: county.county,
-    count: county.firm_count,
-  }));
-  const ukTowns = townStats.map((town) => ({
-    countySlug: town.county_slug,
-    slug: town.town_slug,
-    name: town.town,
-  }));
+  try {
+    const [regionsRes, specsEnabledRes, paged, countRes, ukResults] =
+      await Promise.all([
+        getDirectoryRegions(),
+        specializationsEnabled(),
+        getFilteredListingsPaged({
+          region: sp.region,
+          citySlug: sp.city,
+          specSlug: sp.type,
+          query: sp.q,
+          page,
+        }),
+        isFiltered ? Promise.resolve(null) : getListingsCount(),
+        allowUkDiscovery
+          ? Promise.allSettled([getUkCounties(), getUkAllTownHubs()])
+          : Promise.resolve(null),
+      ]);
 
-  // Specialization filter is gated: hidden until the join table has tagged rows
-  // for this country (currently empty empire-wide → dead UI).
-  const specializations = specsEnabled ? await getSpecializations() : [];
+    regions = regionsRes;
+    specsEnabled = specsEnabledRes;
+    listings = paged.listings;
+    hasMore = paged.hasMore;
+    totalCount = countRes;
 
-  const { listings, hasMore } = paged;
+    const countyStats =
+      ukResults?.[0]?.status === "fulfilled" ? ukResults[0].value : [];
+    const townStats =
+      ukResults?.[1]?.status === "fulfilled" ? ukResults[1].value : [];
+    ukCounties = countyStats.map((county) => ({
+      slug: county.county_slug,
+      name: county.county,
+      count: county.firm_count,
+    }));
+    ukTowns = townStats.map((town) => ({
+      countySlug: town.county_slug,
+      slug: town.town_slug,
+      name: town.town,
+    }));
+
+    specializations = specsEnabled ? await getSpecializations() : [];
+  } catch (err) {
+    console.error("[directory] DB fault — soft shell (no 500):", err);
+    return (
+      <DirectorySoftShell
+        regions={fallbackDirectoryRegions()}
+        specializations={[]}
+        sp={sp}
+      />
+    );
+  }
 
   // Active-filter chip labels
   const chips: Array<{ label: string; href: string }> = [];

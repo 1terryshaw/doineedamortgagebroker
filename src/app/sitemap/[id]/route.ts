@@ -1,16 +1,27 @@
 import { renderChunk, getSegments } from "@/lib/sitemap-chunks";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 3600;
+// ISR + on-demand children. generateStaticParams returns [] so `next build` never
+// prerenders /sitemap/{i}.xml against a live heavy listing keyset walk (stream53
+// 57014 / Nov 9 therapist dpl ERROR). dynamicParams keeps unknown ids renderable
+// on first request; a fault still rethrows (K189/K216 — no 503, never empty 200).
+export const dynamic = "force-static";
+export const revalidate = 86400;
+export const maxDuration = 60;
+export const dynamicParams = true;
 
-// Child sitemaps for the /sitemap.xml index (TDL #957). Path: /sitemap/{i}.xml
-// where i is 0-based. Each holds <= CHUNK_SIZE URLs, sliced from the global
-// deterministic stream (see lib/sitemap-chunks.ts).
-export async function GET(
+/**
+ * Never enumerate children against getSegments / getListingsContentRange at build.
+ */
+export async function generateStaticParams(): Promise<{ id: string }[]> {
+  return [];
+}
+
+async function renderSitemap(
   _req: Request,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> | { id: string } },
 ) {
-  const match = /^(\d+)\.xml$/.exec(params.id);
+  const resolved = await Promise.resolve(params);
+  const match = /^(\d+)\.xml$/.exec(resolved.id);
   if (!match) {
     return new Response("Not Found", { status: 404 });
   }
@@ -24,7 +35,21 @@ export async function GET(
   return new Response(xml, {
     headers: {
       "Content-Type": "application/xml",
-      "Cache-Control": "public, max-age=3600, s-maxage=3600",
+      // No explicit Cache-Control: with revalidate=86400 Next emits s-maxage itself.
     },
   });
+}
+
+export async function GET(
+  ...args: Parameters<typeof renderSitemap>
+): Promise<Response> {
+  try {
+    return await renderSitemap(...args);
+  } catch (err) {
+    console.error(
+      "[sitemap] generation FAULT — rethrowing (K189/K216: no 503 fallback, never an empty 200):",
+      err,
+    );
+    throw err;
+  }
 }
