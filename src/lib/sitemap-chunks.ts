@@ -1,6 +1,7 @@
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { SITE_URL } from "@/lib/constants";
 import { COUNTRY, PROVINCE_WHITELIST } from "@/lib/country";
+import { KEYSET_PAGE } from "@/lib/directory-hub";
 
 /**
  * Chunked-sitemap engine (TDL #957). The apex universe (~93k URLs) exceeds the
@@ -8,13 +9,10 @@ import { COUNTRY, PROVINCE_WHITELIST } from "@/lib/country";
  * <sitemapindex> and the URLs are sharded into /sitemap/{i}.xml children of
  * CHUNK_SIZE each.
  *
- * Sharding is DETERMINISTIC offset-ranging over a stable ORDER BY (regions by
- * slug, listings by id) — same DB state in => same partition out. lastmod is
- * preserved per row (listings carry updated_at). Every URL type is folded into
- * ONE globally-ordered stream and sliced by global offset, so NO child sitemap
- * can exceed CHUNK_SIZE regardless of how the region/spec/listing mix grows
- * (i.e. the "static + hubs in chunk 0" shortcut is intentionally avoided — it
- * silently overflows once the non-listing set passes the ceiling).
+ * Sharding is DETERMINISTIC over a stable ORDER BY (regions by slug, listings
+ * by id) — same DB state in => same partition out. Listing slices use id KEYSET
+ * pages (never deep OFFSET). Prefer omitting <lastmod> on index/hub shapes over
+ * a decorative full-corpus MAX scan (stream53 / 57014).
  *
  * Global stream order:
  *   [ STATIC(2) ] [ REGION_HUBS(R) ] [ REGION×SPEC(R*P) ] [ LISTINGS(L) ]
@@ -78,49 +76,13 @@ function contentLastmod(row: ContentRow, fallback: string): string {
 }
 
 /**
- * The newest content date anywhere in the served corpus, used as the lastmod for
- * INDEX-shaped pages (home, /search, region hubs, region×spec) and the sitemapindex.
- *
- * Those pages previously stamped `new Date()` — a lastmod that varies on EVERY
- * REQUEST, i.e. 43,660 US URLs claiming "changed this instant" on every fetch. That
- * is a worse false-freshness defect than the listing one and is what this replaces.
- *
- * An index page over the corpus cannot be newer than the newest content in the
- * corpus, so this is a real content date and is stable across requests. Known
- * residual: it OVERSTATES a quiet region whose own newest listing is older than the
- * corpus max. The strictly-true value is per-region MAX(contentLastmod), which needs
- * a full 64k-row scan of mortgage_listings inside a force-dynamic route — this repo
- * has a live 50k PostgREST-truncation history (TDL #957 silently dropped 14,587
- * listings), so that scan is NOT being added in the same commit as the churn fix.
- * Filed as the follow-up; a per-region aggregate view is the right shape.
- *
- * Cost: 5 single-row ordered reads (LIMIT 1), no truncation surface.
+ * Index/hub lastmod — OMIT rather than a decorative 5× MAX(content-col) scan.
+ * That scan stampeded mortgage_listings under build/runtime contention (stream53
+ * 57014 class). Prefer no <lastmod> on index/hub shapes over fabricating one.
+ * Listing rows still carry per-row contentLastmod from the keyset walk.
  */
-async function getCorpusContentMax(fallback: string): Promise<string> {
-  const supabase = await createServiceRoleClient();
-  const results = await Promise.all(
-    CONTENT_COLS.map((col) =>
-      supabase
-        .from("mortgage_listings")
-        .select(col)
-        .eq("is_active", true)
-        .eq("country", COUNTRY)
-        // De-serve read guard — see the note on getSegments(). Identical predicate.
-        .neq("is_published", false)
-        .not(col, "is", null)
-        .order(col, { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-    ),
-  );
-  let best = 0;
-  for (let i = 0; i < results.length; i++) {
-    const raw = (results[i].data as ContentRow | null)?.[CONTENT_COLS[i]];
-    if (!raw) continue;
-    const t = new Date(raw).getTime();
-    if (Number.isFinite(t) && t > best) best = t;
-  }
-  return best > 0 ? new Date(best).toISOString() : fallback;
+function indexLastmodOmitted(): null {
+  return null;
 }
 
 interface UrlEntry {
@@ -140,13 +102,16 @@ function xmlEscape(s: string): string {
 }
 
 function renderUrl(e: UrlEntry): string {
-  return `  <url><loc>${xmlEscape(e.loc)}</loc><lastmod>${e.lastmod}</lastmod><changefreq>${e.changefreq}</changefreq><priority>${e.priority}</priority></url>`;
+  const lastmod = e.lastmod
+    ? `<lastmod>${e.lastmod}</lastmod>`
+    : "";
+  return `  <url><loc>${xmlEscape(e.loc)}</loc>${lastmod}<changefreq>${e.changefreq}</changefreq><priority>${e.priority}</priority></url>`;
 }
 
-function staticEntries(now: string): UrlEntry[] {
+function staticEntries(lastmod: string | null): UrlEntry[] {
   return [
-    { loc: SITE_URL, lastmod: now, changefreq: "daily", priority: "1.0" },
-    { loc: `${SITE_URL}/search`, lastmod: now, changefreq: "daily", priority: "0.9" },
+    { loc: SITE_URL, lastmod: lastmod ?? "", changefreq: "daily", priority: "1.0" },
+    { loc: `${SITE_URL}/search`, lastmod: lastmod ?? "", changefreq: "daily", priority: "0.9" },
   ];
 }
 
@@ -218,23 +183,32 @@ export async function getOccupiedSpecSlugs(): Promise<string[]> {
 export async function getOccupiedRegionSlugs(): Promise<string[]> {
   const supabase = await createServiceRoleClient();
   const occupied = new Set<string>();
-  const PAGE = 1000;
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase
+  // id KEYSET — never deep OFFSET. Fail-closed on error (short set drops live hubs).
+  let lastId: string | null = null;
+  for (;;) {
+    let q = supabase
       .from("mortgage_listings")
-      .select("region_id")
+      .select("id, region_id")
       .eq("is_active", true)
       .eq("country", COUNTRY)
       .neq("is_published", false)
       .not("region_id", "is", null)
-      .order("region_id")
-      .range(from, from + PAGE - 1);
-    // FAIL CLOSED on a paging error: returning a SHORT set here would drop live
-    // hubs out of the sitemap, which is worse than emitting none.
-    if (error) throw new Error(`getOccupiedRegionSlugs failed at offset ${from}: ${error.message}`);
-    const rows = (data ?? []) as { region_id: string }[];
-    for (const r of rows) if (r.region_id) occupied.add(r.region_id);
-    if (rows.length < PAGE) break;
+      .order("id", { ascending: true })
+      .limit(KEYSET_PAGE);
+    if (lastId) q = q.gt("id", lastId);
+    const { data, error } = await q;
+    if (error) {
+      throw new Error(
+        `getOccupiedRegionSlugs failed after id=${lastId ?? "start"}: ${error.message}`,
+      );
+    }
+    const rows = (data ?? []) as { id: string; region_id: string }[];
+    if (rows.length === 0) break;
+    for (const r of rows) {
+      lastId = r.id;
+      if (r.region_id) occupied.add(r.region_id);
+    }
+    if (rows.length < KEYSET_PAGE) break;
   }
   if (occupied.size === 0) return [];
   // Resolve ids -> slugs inside the province whitelist, ordered by slug, in
@@ -251,6 +225,54 @@ export async function getOccupiedRegionSlugs(): Promise<string[]> {
     for (const r of (data ?? []) as { slug: string }[]) slugs.push(r.slug);
   }
   return slugs.sort();
+}
+
+/**
+ * Listing content rows for a sitemap chunk slice — id KEYSET pages, never deep OFFSET.
+ * Fail-closed: throws on query error (K189/K216 — never an empty 200 from a fault).
+ */
+export async function getListingsContentRange(
+  offset: number,
+  limit: number,
+): Promise<(ContentRow & { slug: string; id: string })[]> {
+  if (limit <= 0) return [];
+  const supabase = await createServiceRoleClient();
+  const out: (ContentRow & { slug: string; id: string })[] = [];
+  let lastId: string | null = null;
+  let skipped = 0;
+  const need = offset + limit;
+
+  while (skipped + out.length < need) {
+    let q = supabase
+      .from("mortgage_listings")
+      .select(`id, ${LISTING_CONTENT_SELECT}`)
+      .eq("is_active", true)
+      .eq("country", COUNTRY)
+      .neq("is_published", false)
+      .order("id", { ascending: true })
+      .limit(KEYSET_PAGE);
+    if (lastId) q = q.gt("id", lastId);
+    const { data, error } = await q;
+    if (error) {
+      throw new Error(
+        `getListingsContentRange failed after ${out.length} rows: ${error.message}`,
+      );
+    }
+    // Dynamic select string is not inferred by supabase-js generics — cast via unknown.
+    const page = (data ?? []) as unknown as (ContentRow & { slug: string; id: string })[];
+    if (page.length === 0) break;
+    for (const row of page) {
+      lastId = row.id;
+      if (skipped < offset) {
+        skipped++;
+        continue;
+      }
+      out.push(row);
+      if (out.length >= limit) break;
+    }
+    if (page.length < KEYSET_PAGE) break;
+  }
+  return out;
 }
 
 /** Count each segment (head-only count queries) and derive the chunk count. */
@@ -275,11 +297,11 @@ export async function getSegments(): Promise<Segments> {
       // DE-SERVE READ GUARD — the sitemap must not advertise a withdrawn URL (recon-v1
       // §A4: 548/548 de-served slugs were present across the three shards).
       //
-      // ⚠ THE PREDICATE MUST BE IDENTICAL IN ALL THREE LISTING READS IN THIS FILE
-      // (this count, getCorpusContentMax, and renderChunk's range read). Sharding is
-      // deterministic offset-ranging over a COUNT taken here and a range() taken there —
+      // ⚠ THE PREDICATE MUST BE IDENTICAL IN ALL LISTING READS IN THIS FILE
+      // (this count and getListingsContentRange's keyset walk). Sharding is
+      // deterministic over a COUNT taken here and a keyset slice taken there —
       // if the two disagree by even one row the partition slips and shards silently drop
-      // or duplicate URLs. Change one, change all three.
+      // or duplicate URLs. Change one, change all.
       .neq("is_published", false),
   ]);
   const S = staticEntries("").length;
@@ -294,13 +316,12 @@ export async function getSegments(): Promise<Segments> {
 
 /** The <sitemapindex> body: one <sitemap> per child chunk. */
 export async function renderIndex(baseUrl: string): Promise<string> {
+  // Sized from getSegments() counts only — no decorative lastmod corpus scan.
   const { totalChunks } = await getSegments();
-  // Was `new Date()` — a per-request-varying lastmod on every child sitemap.
-  const lastmod = await getCorpusContentMax(new Date().toISOString());
+  void indexLastmodOmitted();
   const rows = Array.from(
     { length: totalChunks },
-    (_, i) =>
-      `  <sitemap><loc>${baseUrl}/sitemap/${i}.xml</loc><lastmod>${lastmod}</lastmod></sitemap>`,
+    (_, i) => `  <sitemap><loc>${baseUrl}/sitemap/${i}.xml</loc></sitemap>`,
   ).join("\n");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -311,19 +332,15 @@ ${rows}
 /** The <urlset> body for child chunk `id` (0-based). Empty if out of range. */
 export async function renderChunk(id: number): Promise<string> {
   const seg = await getSegments();
-  const { S, R, P, RS, L, T } = seg;
+  const { S, R, P, RS, T } = seg;
   const lo = id * CHUNK_SIZE;
   const hi = Math.min(lo + CHUNK_SIZE, T);
   const now = new Date().toISOString();
-  // Index-shaped pages (static/hubs/spec) cite the corpus's newest CONTENT date,
-  // never `now` — see getCorpusContentMax. `now` survives only as a last-resort
-  // fallback for a row with no content timestamp at all (none exist today).
-  const indexLastmod = await getCorpusContentMax(now);
+  // No decorative corpus MAX scan — omit lastmod on index/hub shapes.
+  const hubLastmod = "";
   const out: string[] = [];
 
   if (id >= 0 && lo < T) {
-    const supabase = await createServiceRoleClient();
-
     // segment [start, end) global bounds
     const staticEnd = S;
     const hubStart = S,
@@ -337,7 +354,7 @@ export async function renderChunk(id: number): Promise<string> {
     if (lo < staticEnd) {
       const a = Math.max(lo, 0);
       const b = Math.min(hi, staticEnd);
-      for (const e of staticEntries(indexLastmod).slice(a, b)) out.push(renderUrl(e));
+      for (const e of staticEntries(null).slice(a, b)) out.push(renderUrl(e));
     }
 
     // --- REGION HUBS (ordered by slug) ---
@@ -347,7 +364,7 @@ export async function renderChunk(id: number): Promise<string> {
       // The SAME derivation getSegments() counted R from — see getOccupiedRegionSlugs().
       const hubSlugs = (await getOccupiedRegionSlugs()).slice(a, b);
       for (const slug of hubSlugs)
-        out.push(renderUrl({ loc: `${SITE_URL}/${slug}`, lastmod: indexLastmod, changefreq: "weekly", priority: "0.8" }));
+        out.push(renderUrl({ loc: `${SITE_URL}/${slug}`, lastmod: hubLastmod, changefreq: "weekly", priority: "0.8" }));
     }
 
     // --- REGION × SPEC (region-major, spec-minor; region.slug then spec.slug) ---
@@ -378,7 +395,7 @@ export async function renderChunk(id: number): Promise<string> {
             out.push(
               renderUrl({
                 loc: `${SITE_URL}/${regionArr[ri].slug}/${specArr[pi]}`,
-                lastmod: indexLastmod,
+                lastmod: hubLastmod,
                 changefreq: "weekly",
                 priority: "0.7",
               }),
@@ -388,23 +405,12 @@ export async function renderChunk(id: number): Promise<string> {
       }
     }
 
-    // --- LISTINGS (ordered by id) ---
+    // --- LISTINGS (ordered by id, KEYSET — never deep OFFSET) ---
     if (lo < listEnd && hi > listStart) {
       const a = Math.max(lo, listStart) - listStart;
       const b = Math.min(hi, listEnd) - listStart;
-      // ORDER BY id + the same range() as before — partitioning and the URL set are
-      // untouched. ONLY the lastmod value changes: updated_at (outreach/bulk-write
-      // polluted) -> GREATEST(content-bearing cols). See THE RULE above.
-      const { data } = await supabase
-        .from("mortgage_listings")
-        .select(LISTING_CONTENT_SELECT)
-        .eq("is_active", true)
-        .eq("country", COUNTRY)
-        // De-serve read guard — IDENTICAL to getSegments()'s count. See the warning there.
-        .neq("is_published", false)
-        .order("id")
-        .range(a, b - 1);
-      for (const listing of ((data ?? []) as unknown) as (ContentRow & { slug: string })[])
+      const listings = await getListingsContentRange(a, b - a);
+      for (const listing of listings)
         out.push(
           renderUrl({
             loc: `${SITE_URL}/listing/${listing.slug}`,

@@ -1,8 +1,15 @@
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { COUNTRY } from "@/lib/country";
 import { CANADIAN_PROVINCES, US_STATES } from "@/lib/provinces";
+import { isStatementTimeout, withTimeoutRetry } from "@/lib/db-timeout";
 
 export const REGION_PAGE_SIZE = 48;
+
+/** Cap deep OFFSET pages — page N with OFFSET (N-1)*48 still scans; refuse past this. */
+export const MAX_DIRECTORY_PAGE = 50;
+
+/** Keyset page size for facet / sitemap-style walks — never a 50k deep OFFSET. */
+export const KEYSET_PAGE = 1_000;
 
 export type DirectoryCity = {
   city: string;
@@ -44,41 +51,74 @@ function provinceName(code: string): string {
   return PROVINCE_NAME_MAP.get(code) ?? code;
 }
 
+/** Static province shells (empty cities) — soft-shell fallback when the DB faults. */
+export function fallbackDirectoryRegions(): DirectoryRegion[] {
+  const list = COUNTRY === "CA" ? CANADIAN_PROVINCES : US_STATES;
+  return list.map((r) => ({
+    province: r.code,
+    name: r.name,
+    cities: [],
+  }));
+}
+
+let _regionsCache: { ts: number; data: DirectoryRegion[] } | null = null;
+const REGIONS_TTL_MS = 60 * 60 * 1000; // 1h — region facets change slowly
+
 /**
- * Derive directory regions directly from mortgage_listings.
- * mv_mortgage_listings_cities is empty and mortgage_regions is sparse.
+ * Derive directory regions from mortgage_listings via id KEYSET pages.
  *
- * 2c fix: added .order() before .range() — Postgres OFFSET pagination is
- * undefined without ORDER BY. Pre-fix, the separate paginated queries returned
- * an inconsistent row set (no stable sort across calls), so ~7% of city slugs
- * were intermittently dropped from the dropdowns.
+ * Previously used deep `.range(from, from+999)` OFFSET walks up to 50k rows — under
+ * PostgREST contention that blew the ~8s authenticator statement_timeout (57014) and
+ * held the force-dynamic homepage + /directory at ~8–10s TTFB.
+ *
+ * Throws on query error (incl. 57014) so callers can soft-shell. Module TTL cache
+ * keeps warm instances off the live table for an hour.
  */
 export async function getDirectoryRegions(): Promise<DirectoryRegion[]> {
+  if (_regionsCache && Date.now() - _regionsCache.ts < REGIONS_TTL_MS) {
+    return _regionsCache.data;
+  }
+
+  const data = await withTimeoutRetry("getDirectoryRegions", fetchDirectoryRegionsKeyset);
+  _regionsCache = { ts: Date.now(), data };
+  return data;
+}
+
+async function fetchDirectoryRegionsKeyset(): Promise<DirectoryRegion[]> {
   const supabase = await createServiceRoleClient();
 
-  type Row = { province: string; city: string; city_slug: string };
+  type Row = { id: string; province: string; city: string; city_slug: string };
   const all: Row[] = [];
-  const pageSize = 1000;
-  let from = 0;
-  while (from < 50000) {
-    const { data, error } = await supabase
+  let lastId: string | null = null;
+
+  for (;;) {
+    let q = supabase
       .from("mortgage_listings")
-      .select("province, city, city_slug")
+      .select("id, province, city, city_slug")
       .eq("country", COUNTRY)
       .eq("is_active", true)
-      // De-serve read guard. A city whose only rows are de-served must stop appearing as
-      // a facet — and the facet COUNT must be the count the link actually opens.
       .neq("is_published", false)
       .not("province", "is", null)
       .not("city", "is", null)
       .not("city_slug", "is", null)
-      .order("province", { ascending: true })
-      .order("city_slug", { ascending: true })
-      .range(from, from + pageSize - 1);
-    if (error || !data || data.length === 0) break;
-    all.push(...(data as Row[]));
-    if (data.length < pageSize) break;
-    from += pageSize;
+      .order("id", { ascending: true })
+      .limit(KEYSET_PAGE);
+    if (lastId) q = q.gt("id", lastId);
+
+    const { data, error } = await q;
+    if (error) {
+      const err = Object.assign(new Error(error.message), {
+        code: (error as { code?: string }).code ?? (isStatementTimeout(error) ? "57014" : undefined),
+      });
+      throw err;
+    }
+    const page = (data ?? []) as Row[];
+    if (page.length === 0) break;
+    for (const row of page) {
+      lastId = row.id;
+      all.push(row);
+    }
+    if (page.length < KEYSET_PAGE) break;
   }
 
   const byProvince = new Map<string, Map<string, { city: string; count: number }>>();
@@ -105,15 +145,21 @@ export async function getDirectoryRegions(): Promise<DirectoryRegion[]> {
 }
 
 export async function getListingsCount(): Promise<number> {
-  const supabase = await createServiceRoleClient();
-  const { count, error } = await supabase
-    .from("mortgage_listings")
-    .select("*", { count: "exact", head: true })
-    .eq("country", COUNTRY)
-    .eq("is_active", true)
-    // De-serve read guard — the sitewide "N brokers" headline must count what we serve.
-    .neq("is_published", false);
-  return error || !count ? 0 : count;
+  return withTimeoutRetry("getListingsCount", async () => {
+    const supabase = await createServiceRoleClient();
+    const { count, error } = await supabase
+      .from("mortgage_listings")
+      .select("*", { count: "exact", head: true })
+      .eq("country", COUNTRY)
+      .eq("is_active", true)
+      .neq("is_published", false);
+    if (error) {
+      throw Object.assign(new Error(error.message), {
+        code: (error as { code?: string }).code,
+      });
+    }
+    return count ?? 0;
+  });
 }
 
 export type SpecializationOption = {
@@ -138,13 +184,26 @@ export async function getSpecializations(): Promise<SpecializationOption[]> {
  * auto-reappear once the join table is populated for the country.
  */
 export async function specializationsEnabled(): Promise<boolean> {
-  const supabase = await createServiceRoleClient();
-  const { data, error } = await supabase
-    .from("mortgage_listing_specializations")
-    .select("listing_id, mortgage_listings!inner(country)")
-    .eq("mortgage_listings.country", COUNTRY)
-    .limit(1);
-  return !error && !!data && data.length > 0;
+  try {
+    return await withTimeoutRetry("specializationsEnabled", async () => {
+      const supabase = await createServiceRoleClient();
+      const { data, error } = await supabase
+        .from("mortgage_listing_specializations")
+        .select("listing_id, mortgage_listings!inner(country)")
+        .eq("mortgage_listings.country", COUNTRY)
+        .limit(1);
+      if (error) {
+        throw Object.assign(new Error(error.message), {
+          code: (error as { code?: string }).code,
+        });
+      }
+      return !!data && data.length > 0;
+    });
+  } catch (err) {
+    // Soft: specialization tiles are optional; a timeout must not blank the homepage.
+    console.warn("[directory-hub] specializationsEnabled degraded to false:", err);
+    return false;
+  }
 }
 
 export type FilterOpts = {
@@ -156,64 +215,80 @@ export type FilterOpts = {
   perPage?: number;
 };
 
+/**
+ * Paged directory listings. Page size stays small (REGION_PAGE_SIZE).
+ * Pages past MAX_DIRECTORY_PAGE return empty (no deep OFFSET). One 57014 retry;
+ * on persistent fault the error is thrown for the route soft-shell.
+ */
 export async function getFilteredListingsPaged(opts: FilterOpts = {}): Promise<{
   listings: DirectoryListing[];
   hasMore: boolean;
 }> {
-  const supabase = await createServiceRoleClient();
   const page = Math.max(1, opts.page ?? 1);
   const perPage = opts.perPage ?? REGION_PAGE_SIZE;
-  const from = (page - 1) * perPage;
-  const to = from + perPage;
-
-  let specFilterIds: string[] | null = null;
-  if (opts.specSlug) {
-    const { data: spec } = await supabase
-      .from("mortgage_specializations")
-      .select("id")
-      .eq("slug", opts.specSlug)
-      .limit(1)
-      .maybeSingle();
-    if (!spec) return { listings: [], hasMore: false };
-    const { data: joinRows } = await supabase
-      .from("mortgage_listing_specializations")
-      .select("listing_id")
-      .eq("specialization_id", spec.id);
-    specFilterIds = (joinRows ?? []).map((r) => r.listing_id as string);
-    if (specFilterIds.length === 0) return { listings: [], hasMore: false };
+  if (page > MAX_DIRECTORY_PAGE) {
+    return { listings: [], hasMore: false };
   }
 
-  let q = supabase
-    .from("mortgage_listings")
-    .select(
-      `id, slug, name, city, province,
-       google_rating, google_review_count,
-       photo_url, hero_image_url,
-       is_premium, subscription_tier,
-       mortgage_listing_specializations(
-         mortgage_specializations(slug, name, icon)
-       )`
-    )
-    .eq("country", COUNTRY)
-    .eq("is_active", true)
-    // De-serve read guard — /directory + /search results.
-    .neq("is_published", false);
+  return withTimeoutRetry(`getFilteredListingsPaged(p=${page})`, async () => {
+    const supabase = await createServiceRoleClient();
+    const from = (page - 1) * perPage;
+    const to = from + perPage;
 
-  if (opts.region) q = q.eq("province", opts.region);
-  if (opts.citySlug) q = q.eq("city_slug", opts.citySlug);
-  if (opts.query) q = q.ilike("name", `%${opts.query}%`);
-  if (specFilterIds) q = q.in("id", specFilterIds);
+    let specFilterIds: string[] | null = null;
+    if (opts.specSlug) {
+      const { data: spec } = await supabase
+        .from("mortgage_specializations")
+        .select("id")
+        .eq("slug", opts.specSlug)
+        .limit(1)
+        .maybeSingle();
+      if (!spec) return { listings: [], hasMore: false };
+      const { data: joinRows } = await supabase
+        .from("mortgage_listing_specializations")
+        .select("listing_id")
+        .eq("specialization_id", spec.id);
+      specFilterIds = (joinRows ?? []).map((r) => r.listing_id as string);
+      if (specFilterIds.length === 0) return { listings: [], hasMore: false };
+    }
 
-  q = q
-    .order("google_rating", { ascending: false, nullsFirst: false })
-    .order("google_review_count", { ascending: false, nullsFirst: false })
-    .order("name", { ascending: true })
-    .range(from, to);
+    let q = supabase
+      .from("mortgage_listings")
+      .select(
+        `id, slug, name, city, province,
+         google_rating, google_review_count,
+         photo_url, hero_image_url,
+         is_premium, subscription_tier,
+         mortgage_listing_specializations(
+           mortgage_specializations(slug, name, icon)
+         )`
+      )
+      .eq("country", COUNTRY)
+      .eq("is_active", true)
+      .neq("is_published", false);
 
-  const { data, error } = await q;
-  if (error || !data) return { listings: [], hasMore: false };
+    if (opts.region) q = q.eq("province", opts.region);
+    if (opts.citySlug) q = q.eq("city_slug", opts.citySlug);
+    if (opts.query) q = q.ilike("name", `%${opts.query}%`);
+    if (specFilterIds) q = q.in("id", specFilterIds);
 
-  const hasMore = data.length > perPage;
-  const listings = (hasMore ? data.slice(0, perPage) : data) as unknown as DirectoryListing[];
-  return { listings, hasMore };
+    q = q
+      .order("google_rating", { ascending: false, nullsFirst: false })
+      .order("google_review_count", { ascending: false, nullsFirst: false })
+      .order("name", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to);
+
+    const { data, error } = await q;
+    if (error) {
+      throw Object.assign(new Error(error.message), {
+        code: (error as { code?: string }).code,
+      });
+    }
+    if (!data) return { listings: [], hasMore: false };
+
+    const hasMore = data.length > perPage;
+    const listings = (hasMore ? data.slice(0, perPage) : data) as unknown as DirectoryListing[];
+    return { listings, hasMore };
+  });
 }

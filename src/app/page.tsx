@@ -2,6 +2,7 @@ import Link from "next/link";
 import { SITE_NAME, SITE_URL } from "@/lib/constants";
 import { JURISDICTION } from "@/lib/jurisdiction";
 import {
+  fallbackDirectoryRegions,
   getDirectoryRegions,
   getSpecializations,
   specializationsEnabled,
@@ -16,18 +17,29 @@ import type { Metadata } from "next";
 // inherit from the layout.
 export const metadata: Metadata = { alternates: selfAlternates("/") };
 
+// DOCUMENTED EXCEPTION (CLAUDE.md / TDL #1262): stay force-dynamic — root layout
+// reads headers() for FCA UK/US chrome, so revalidate on `/` would be inert.
+// Soft-shell below keeps a slow/57014 DB from hanging the response ~8–10s.
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   // Listing-derived regions (full province + city coverage) — replaces the
   // legacy mortgage_regions source, which only held ON (CA) / FL (US) and made
   // the homepage look province-locked. /directory is the canonical search surface.
-  const regions = await getDirectoryRegions();
-
-  // Specialization tiles are gated: mortgage_listing_specializations is empty,
-  // so the tiles would all be dead links. Only fetch + render when tagged.
-  const specsEnabled = await specializationsEnabled();
-  const specs = specsEnabled ? await getSpecializations() : [];
+  // Soft-shell: a 57014 / hung facet walk must still return HTTP 200 with SEO chrome.
+  let regions: DirectoryRegion[] = fallbackDirectoryRegions();
+  let specsEnabled = false;
+  let specs: Awaited<ReturnType<typeof getSpecializations>> = [];
+  try {
+    regions = await getDirectoryRegions();
+    specsEnabled = await specializationsEnabled();
+    specs = specsEnabled ? await getSpecializations() : [];
+  } catch (err) {
+    console.error("[home] DB fault — soft shell (no 500):", err);
+    regions = fallbackDirectoryRegions();
+    specsEnabled = false;
+    specs = [];
+  }
 
   return (
     <>
